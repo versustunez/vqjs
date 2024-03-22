@@ -43,14 +43,20 @@ jobs:
       - name: Download Typescript
         shell: bash
         run: curl https://cdn.jsdelivr.net/npm/typescript@5.3/lib/typescript.js -o .vqjs/typescript.js
+      - name: Package
+        shell: pwsh
+        run: |
+          if ($env:RUNNER_OS -eq "Windows") {
+            7z a vqjs-${{runner.os}}-${{ matrix.buildType }}.zip includes/ .vqjs/ bin/
+          }
+          else {
+            zip -r vqjs-${{runner.os}}-${{ matrix.buildType }}.zip includes/ .vqjs/ bin/
+          }
       - name: Upload Zip
         uses: actions/upload-artifact@v4
         with:
           name: vqjs-${{runner.os}}-${{ matrix.buildType }}.zip
-          path: |
-            includes/ 
-            .vqjs/
-            bin/
+          path: vqjs-${{runner.os}}-${{ matrix.buildType }}.zip
   release:
     if: contains(github.ref, 'tags/v')
     runs-on: ubuntu-latest
