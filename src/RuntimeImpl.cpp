@@ -2,7 +2,6 @@
 
 #include <File.h>
 #include <filesystem>
-#include <format>
 #include <quickjs/quickjs.h>
 #include <vector>
 

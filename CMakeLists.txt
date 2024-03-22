@@ -10,10 +10,6 @@ set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/bin/)
 set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/bin/)
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/bin/)
 
-if (MSVC)
-    message(FATAL_ERROR "Unsupported compiler")
-endif ()
-
 add_library(sse4_1 INTERFACE IMPORTED)
 target_compile_options(sse4_1 INTERFACE -msse4.1)
 
