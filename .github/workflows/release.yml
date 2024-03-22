@@ -55,7 +55,7 @@ jobs:
       - name: Upload Zip
         uses: actions/upload-artifact@v4
         with:
-          name: vqjs-${{runner.os}}-${{ matrix.buildType }}.zip
+          name:
           path: vqjs-${{runner.os}}-${{ matrix.buildType }}.zip
   release:
     if: contains(github.ref, 'tags/v')
@@ -71,4 +71,4 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
           prerelease: true
           files: |
-            *.zip
+            **/*.zip
