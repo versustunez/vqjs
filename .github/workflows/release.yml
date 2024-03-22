@@ -1,0 +1,66 @@
+name: Release
+run-name: "Release"
+on:
+  push:
+    tags:
+      - '**'
+
+concurrency:
+  group: ${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  BUILD_DIR: Builds
+  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+  CMAKE_BUILD_PARALLEL_LEVEL: 3
+
+jobs:
+  build:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ ubuntu-20.04, windows-latest ]
+        buildType: [ Debug, Release ]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+      - name: Configure
+        shell: bash
+        run: cmake -B ${{ env.BUILD_DIR }} -DCMAKE_BUILD_TYPE=${{ matrix.buildType }} -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64" .
+      - name: Build
+        shell: bash
+        run: cmake --build ${{ env.BUILD_DIR }} --config ${{ matrix.buildType }} --parallel 4
+      - name: Download Typescript
+        shell: bash
+        run: curl https://cdn.jsdelivr.net/npm/typescript@5.3/lib/typescript.js -o .vqjs/typescript.js
+      - name: Package
+        shell: pwsh
+        run: |
+          if ($env:RUNNER_OS -eq "Windows") {
+            7z a vqjs.${{runner.os}}.zip includes/ .vqjs/ bin/
+          }
+          else {
+            zip -r vqjs.${{runner.os}}.zip includes/ .vqjs/ bin/
+          }
+      - name: Upload Zip (Linux)
+        uses: actions/upload-artifact@v4
+        with:
+          name: vqjs.${{runner.os}}.zip
+          path: vqjs.${{runner.os}}.zip
+  release:
+    if: contains(github.ref, 'tags/v')
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - name: Get Artifacts
+        uses: actions/download-artifact@v3
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          prerelease: true
+          files: |
+            */*.zip
