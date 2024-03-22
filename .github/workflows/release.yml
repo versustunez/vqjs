@@ -26,9 +26,14 @@ jobs:
       - uses: actions/checkout@v4
         with:
           submodules: true
-      - name: Configure
+      - name: Configure (Linux)
+        if: runner.os == 'Linux'
         shell: bash
-        run: cmake -B ${{ env.BUILD_DIR }} -DCMAKE_BUILD_TYPE=${{ matrix.buildType }} -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64" .
+        run: cmake -B ${{ env.BUILD_DIR }} -DCMAKE_BUILD_TYPE=${{ matrix.buildType }} .
+      - name: Configure (Windows)
+        if: runner.os == 'Windows'
+        shell: bash
+        run: cmake -B ${{ env.BUILD_DIR }} -DCMAKE_BUILD_TYPE=${{ matrix.buildType }} -T ClangCL
       - name: Build
         shell: bash
         run: cmake --build ${{ env.BUILD_DIR }} --config ${{ matrix.buildType }} --parallel 4
