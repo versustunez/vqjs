@@ -38,15 +38,6 @@ set_target_properties(${PROJECT_NAME} PROPERTIES
 target_include_directories(${Name} PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/includes/)
 target_include_directories(${Name} PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/vendor/)
 
-
-add_custom_target(
-        copy-compile-commands ALL
-        ${CMAKE_COMMAND} -E copy_if_different
-        ${CMAKE_BINARY_DIR}/compile_commands.json
-        ${CMAKE_CURRENT_LIST_DIR}
-)
-
-
 # ADD quickjs-ng to CMAKE...
 add_subdirectory(CMake/quickjs)
 
