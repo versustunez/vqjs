@@ -166,7 +166,7 @@ std::string Runtime::TranspileFile(const std::string &file) const {
       m_AppInstance.m_BaseDirectory + ".cache/" + getCacheFileName(path);
 
   if (File::Exists(cacheFile) &&
-      File::LastChanged(cacheFile) > File::LastChanged(file)) {
+      File::LastChanged(cacheFile) > File::LastChanged(realFile)) {
     return cacheFile;
   }
   if (!m_Config.UseTypescript)
@@ -182,22 +182,17 @@ void Runtime::WriteTSConfig() const {
   std::stringstream includes;
   includes << R"_("includes": [)_";
   std::stringstream config;
-  config << R"_({"paths": {)_";
+  config << R"_({"compilerOptions": {"baseUrl": ".", "paths": {)_";
   char added = ' ';
 
-  // this is not an problem at all. do not commit the tsconfig because it writes
-  // user specific files
   for (const auto &[fst, snd] : m_ModuleLoader.Paths) {
-    if (fst == "@")
-      continue;
-    std::string path =
-        std::filesystem::relative(snd, m_AppInstance.m_BaseDirectory).generic_string();
-    config << added << '"' << fst << "/*\":\"" << path << "**/*\"";
-    includes << added << '"' << path << "**/*\"";
+    std::string path = std::filesystem::relative(snd, m_AppInstance.m_BaseDirectory).generic_string();
+    config << added << '"' << fst << "/*\":[\"" << path << "/*\"]";
+    includes << added << '"' << path << "/**/*\"";
     added = ',';
   }
-  config << "}," << includes.str() << "]}";
-  File::Write(m_AppInstance.m_BaseDirectory + "tsconfig.json", config.str());
+  config << "}}," << includes.str() << "]}";
+  VQJS::File::Write(m_AppInstance.m_BaseDirectory + "tsconfig.json", config.str());
 }
 
 void Runtime::SetLogger(Ref<Logger> &logger) { m_Logger = logger; }
