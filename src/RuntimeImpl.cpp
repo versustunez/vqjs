@@ -151,7 +151,7 @@ static std::string getCacheFileName(std::filesystem::path &diffPath) {
   for (const auto &component : diffPath) {
     if (!cacheFilename.empty())
       cacheFilename += "_";
-    cacheFilename += component.string();
+    cacheFilename += component.generic_string();
   }
   cacheFilename += ".js";
   return cacheFilename;
@@ -191,7 +191,7 @@ void Runtime::WriteTSConfig() const {
     if (fst == "@")
       continue;
     std::string path =
-        std::filesystem::relative(snd, m_AppInstance.m_BaseDirectory).string();
+        std::filesystem::relative(snd, m_AppInstance.m_BaseDirectory).generic_string();
     config << added << '"' << fst << "/*\":\"" << path << "**/*\"";
     includes << added << '"' << path << "**/*\"";
     added = ',';

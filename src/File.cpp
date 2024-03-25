@@ -28,7 +28,7 @@ bool File::Write(const std::string &file, const std::string &content) {
 }
 
 std::string File::GetExtension(const std::string &file) {
-  return std::filesystem::path(file).extension().string();
+  return std::filesystem::path(file).extension().generic_string();
 }
 
 size_t File::LastChanged(const std::string &file) {
@@ -36,7 +36,7 @@ size_t File::LastChanged(const std::string &file) {
 }
 
 std::string File::GetName(const std::string &file) {
-  return std::filesystem::path(file).filename().string();
+  return std::filesystem::path(file).filename().generic_string();
 }
 
 bool File::CreateDirectory(const std::string &file) {
