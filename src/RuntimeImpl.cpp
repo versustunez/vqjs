@@ -85,14 +85,17 @@ struct Loader {
 
 Runtime::ModuleLoader::Resolved
 Runtime::ModuleLoader::ResolvePath(const std::string &file) const {
-  if (file[0] != '@')
-    return {"", file};
+  if (file[0] != '@') {
+    auto base = Paths.at("@");
+    auto path = std::filesystem::relative(file, base);
+    return {base,path.generic_string()};
+  }
   size_t firstSlash = file.find('/', 0);
   const std::string baseDir = file.substr(0, firstSlash);
   auto data = Paths.find(baseDir);
   if (data == Paths.end())
-    return {baseDir, file.substr(firstSlash+1)};
-  return {data->second, file.substr(firstSlash+1)};
+    return {baseDir, file.substr(firstSlash + 1)};
+  return {data->second, file.substr(firstSlash + 1)};
 }
 
 Runtime::ModuleLoader &Runtime::ModuleLoader::Add(const std::string &a,
