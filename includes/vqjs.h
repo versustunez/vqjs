@@ -172,7 +172,11 @@ struct Runtime {
   };
 
   struct ModuleLoader {
-    std::string ResolvePath(const std::string &file) const;
+    struct Resolved {
+      std::string Base{};
+      std::string Extra{};
+    };
+    Resolved ResolvePath(const std::string &file) const;
     std::unordered_map<std::string, std::string> Paths;
     ModuleLoader &Add(const std::string &, const std::string &);
   };

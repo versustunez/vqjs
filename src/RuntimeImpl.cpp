@@ -8,7 +8,7 @@
 namespace VQJS {
 #define LOGF(Method)                                                           \
   [](const Value &_, const std::vector<Value> &args) {                         \
-    auto &logger = _.GetRuntime() -> GetLogger();                              \
+    auto &logger = _.GetRuntime()->GetLogger();                                \
     for (const auto &item : args) {                                            \
       logger.Method(item.AsString());                                          \
     }                                                                          \
@@ -83,16 +83,18 @@ struct Loader {
   }
 };
 
-std::string Runtime::ModuleLoader::ResolvePath(const std::string &file) const {
+Runtime::ModuleLoader::Resolved
+Runtime::ModuleLoader::ResolvePath(const std::string &file) const {
   if (file[0] != '@')
-    return file;
+    return {"", file};
   size_t firstSlash = file.find('/', 0);
   const std::string baseDir = file.substr(0, firstSlash);
   auto data = Paths.find(baseDir);
   if (data == Paths.end())
-    return file;
-  return data->second + file.substr(firstSlash);
+    return {baseDir, file.substr(firstSlash+1)};
+  return {data->second, file.substr(firstSlash+1)};
 }
+
 Runtime::ModuleLoader &Runtime::ModuleLoader::Add(const std::string &a,
                                                   const std::string &b) {
   Paths[a] = b;
@@ -110,12 +112,16 @@ bool Runtime::Start() {
   if (m_Config.UseTypescript) {
     m_CompilationInstance.SetStackSize(0);
     m_CompilationInstance.SetBaseDirectory(m_Config.CoreDirectory);
-    if (m_CompilationInstance.LoadFile("typescript.js", ModuleType::Global)
-            .IsException()) {
+    auto tsLoad =
+        m_CompilationInstance.LoadFile("typescript.js", ModuleType::Global);
+    if (tsLoad.IsException()) {
+      m_Logger->Error(tsLoad.Exception().AsString());
       return false;
     }
-    if (m_CompilationInstance.LoadFile("compile.js", ModuleType::Global)
-            .IsException()) {
+    auto compileLoad =
+        m_CompilationInstance.LoadFile("compile.js", ModuleType::Global);
+    if (compileLoad.IsException()) {
+      m_Logger->Error(compileLoad.Exception().AsString());
       return false;
     }
   }
@@ -130,8 +136,10 @@ bool Runtime::Reset() {
                          this);
   if (m_ModuleLoader.Paths.contains("@"))
     m_AppInstance.SetBaseDirectory(m_ModuleLoader.Paths["@"]);
-  if (!File::Exists(m_AppInstance.m_BaseDirectory + ".cache/")) {
-    File::CreateDirectory(m_AppInstance.m_BaseDirectory + ".cache/");
+  for (auto &path : m_ModuleLoader.Paths) {
+    if (!File::Exists(path.second + ".cache/")) {
+      File::CreateDirectory(path.second + ".cache/");
+    }
   }
   return true;
 }
@@ -146,35 +154,35 @@ Value Runtime::LoadFile(const std::string &file, bool eval) const {
   return m_AppInstance.LoadFile(file, ModuleType::Module, eval);
 }
 
-static std::string getCacheFileName(std::filesystem::path &diffPath) {
-  std::string cacheFilename;
-  for (const auto &component : diffPath) {
-    if (!cacheFilename.empty())
-      cacheFilename += "_";
-    cacheFilename += component.generic_string();
-  }
+static std::string
+getCacheFileName(const Runtime::ModuleLoader::Resolved &resolved) {
+  std::string cacheFilename = resolved.Extra;
+  std::replace(cacheFilename.begin(), cacheFilename.end(), '/', '_');
   cacheFilename += ".js";
   return cacheFilename;
 }
 
 std::string Runtime::TranspileFile(const std::string &file) const {
   // so first lets check if there is a cached version already
-  std::string realFile = m_ModuleLoader.ResolvePath(file);
-  auto path =
-      std::filesystem::relative(realFile, m_AppInstance.m_BaseDirectory);
+  auto resolvePath = m_ModuleLoader.ResolvePath(file);
+  if (resolvePath.Base.empty()) {
+    resolvePath.Base = m_AppInstance.m_BaseDirectory;
+  }
   std::string cacheFile =
-      m_AppInstance.m_BaseDirectory + ".cache/" + getCacheFileName(path);
+      resolvePath.Base + ".cache/" + getCacheFileName(resolvePath);
 
+  std::string fullPath = resolvePath.Base + resolvePath.Extra;
   if (File::Exists(cacheFile) &&
-      File::LastChanged(cacheFile) > File::LastChanged(realFile)) {
+      File::LastChanged(cacheFile) > File::LastChanged(fullPath)) {
     return cacheFile;
   }
+
   if (!m_Config.UseTypescript)
     return file;
 
   // okay now we are in a TS scope ;)
   const Value _ = m_CompilationInstance.Global();
-  _["compile"](_.String(realFile), _.String(cacheFile));
+  _["compile"](_.String(fullPath), _.String(cacheFile));
   return cacheFile;
 }
 
@@ -186,13 +194,16 @@ void Runtime::WriteTSConfig() const {
   char added = ' ';
 
   for (const auto &[fst, snd] : m_ModuleLoader.Paths) {
-    std::string path = std::filesystem::relative(snd, m_AppInstance.m_BaseDirectory).generic_string();
+    std::string path =
+        std::filesystem::relative(snd, m_AppInstance.m_BaseDirectory)
+            .generic_string();
     config << added << '"' << fst << "/*\":[\"" << path << "/*\"]";
     includes << added << '"' << path << "/**/*\"";
     added = ',';
   }
   config << "}}," << includes.str() << "]}";
-  VQJS::File::Write(m_AppInstance.m_BaseDirectory + "tsconfig.json", config.str());
+  VQJS::File::Write(m_AppInstance.m_BaseDirectory + "tsconfig.json",
+                    config.str());
 }
 
 void Runtime::SetLogger(Ref<Logger> &logger) { m_Logger = logger; }

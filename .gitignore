@@ -13,6 +13,7 @@ out
 
 cmake-build-debug
 cmake-build-release
+cmake-build-*
 CMakeFiles
 CMakeCache.txt
 cmake_install.cmake
@@ -42,3 +43,4 @@ xcuserdata
 /build-reldebg/
 /cmake-build-release/
 /Build/
+/example
