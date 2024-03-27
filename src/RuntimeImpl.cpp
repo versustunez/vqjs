@@ -48,7 +48,6 @@ static constexpr auto FileExists = [](const Value &_,
 
 static void PrepareStd(JSContext *ctx, bool allowFS) {
   Value global = Value::GlobalCtx(ctx);
-  const JSValue global_obj = JS_GetGlobalObject(ctx);
   {
     auto consoleV = global.Object();
     consoleV.AddFunction("log", LOGF(Info));
@@ -66,8 +65,6 @@ static void PrepareStd(JSContext *ctx, bool allowFS) {
 
     global.Set("fs", fs);
   }
-
-  JS_FreeValue(ctx, global_obj);
 }
 
 struct Loader {
@@ -88,7 +85,7 @@ Runtime::ModuleLoader::ResolvePath(const std::string &file) const {
   if (file[0] != '@') {
     auto base = Paths.at("@");
     auto path = std::filesystem::relative(file, base);
-    return {base,path.generic_string()};
+    return {base, path.generic_string()};
   }
   size_t firstSlash = file.find('/', 0);
   const std::string baseDir = file.substr(0, firstSlash);
@@ -148,6 +145,7 @@ bool Runtime::Reset() {
 }
 
 Instance &Runtime::GetInstance() { return m_AppInstance; }
+Instance &Runtime::GetCompilerInstance() { return m_CompilationInstance; }
 
 void Runtime::SetIncludeDirectory(const std::string &includeDir) {
   m_AppInstance.SetBaseDirectory(includeDir);

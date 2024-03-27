@@ -75,6 +75,8 @@ struct Value {
 
   Value operator[](const std::string &name) const;
   Value operator()(const std::vector<Value> &args) const;
+  Value& operator=(const Value& other) noexcept = default;
+  Value& operator=(Value&& other) noexcept = default;
 
   template <typename... Args> Value operator()(Args &&...args) const {
     std::vector<Value> argVec{std::forward<Args>(args)...};
@@ -101,6 +103,7 @@ struct Value {
   explicit Value(JSContext *context);
   explicit Value(JSContext *context, JS::Value);
 
+  Value();
   ~Value();
   Value(const Value &);
   Value(Value &&) noexcept;
@@ -109,8 +112,8 @@ struct Value {
   [[nodiscard]] void *GetUnderlyingPtr() const;
 
 protected:
-  JSContext *m_Context;
-  JS::Value m_UnderlyingValue;
+  JSContext *m_Context{nullptr};
+  JS::Value m_UnderlyingValue{};
   friend ValueUtils;
   friend Runtime;
 };
@@ -189,6 +192,7 @@ struct Runtime {
   void WriteTSConfig() const;
 
   Instance &GetInstance();
+  Instance &GetCompilerInstance();
 
   void SetIncludeDirectory(const std::string &directory);
   void SetLogger(Ref<Logger> &logger);

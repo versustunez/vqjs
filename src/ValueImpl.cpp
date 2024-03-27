@@ -245,6 +245,8 @@ Value Value::GlobalCtx(JSContext *ctx) {
   return Value{ctx, FROM(JS_GetGlobalObject(ctx))};
 }
 
+Value::Value() : m_Context(nullptr), m_UnderlyingValue(FROM(JS_UNDEFINED)) {}
+
 Value::Value(JSContext *context)
     : m_Context(context),
       m_UnderlyingValue(FROM(JS_UNDEFINED)) {}
@@ -253,7 +255,11 @@ Value::Value(JSContext *context, const JS::Value val)
     : m_Context(context),
       m_UnderlyingValue(val) {}
 
-Value::~Value() { JS_FreeValue(m_Context, TO(m_UnderlyingValue)); }
+Value::~Value() {
+  if (m_Context) {
+    JS_FreeValue(m_Context, TO(m_UnderlyingValue));
+  }
+}
 
 Value::Value(const Value &val)
     : m_Context(val.m_Context),
@@ -264,6 +270,7 @@ Value::Value(Value &&val) noexcept
     : m_Context(val.m_Context),
       m_UnderlyingValue(val.m_UnderlyingValue) {
   val.m_UnderlyingValue = FROM(JS_UNDEFINED);
+  val.m_Context = nullptr;
 }
 
 void *Value::GetUnderlyingPtr() const { return m_UnderlyingValue.u.ptr; }
