@@ -172,6 +172,7 @@ struct Runtime {
   struct Config {
     std::string CoreDirectory = ".vqjs/";
     bool UseTypescript = true;
+    std::vector<std::string> CompilerAddons;
   };
 
   struct ModuleLoader {
