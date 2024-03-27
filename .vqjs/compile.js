@@ -5,15 +5,15 @@ const compilerOptions = {
 };
 
 class TsCompile {
-    static TransformSource(source) {
-        return globalThis.transformSource ? globalThis.transformSource(source) : source;
+    static TransformSource(source, file) {
+        return globalThis.transformSource ? globalThis.transformSource(source, file) : source;
     }
 
     static compileFromFile(inFile, outFile, module = "root") {
         const source = fs.read(inFile);
         const result = TsCompile.compileFromSource(
             inFile.split(".").pop(),
-            TsCompile.addMetadata(inFile) + TsCompile.TransformSource(source),
+            TsCompile.addMetadata(inFile) + TsCompile.TransformSource(source, inFile),
             module,
         );
         fs.write(outFile, result);
