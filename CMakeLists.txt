@@ -27,7 +27,7 @@ add_subdirectory(CMake)
 add_subdirectory(src)
 
 get_property(source_files GLOBAL PROPERTY SRCS)
-add_library(${PROJECT_NAME} ${source_files})
+add_library(${PROJECT_NAME} ${source_files} vendor/mimalloc/src/static.c)
 set_property(TARGET ${PROJECT_NAME} PROPERTY CXX_STANDARD 20)
 set_target_properties(${PROJECT_NAME} PROPERTIES
         ARCHIVE_OUTPUT_NAME_DEBUG "vqjs.debug"
@@ -37,6 +37,7 @@ set_target_properties(${PROJECT_NAME} PROPERTIES
 
 target_include_directories(${Name} PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/includes/)
 target_include_directories(${Name} PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/vendor/)
+target_include_directories(${Name} PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/vendor/mimalloc/include)
 
 # ADD quickjs-ng to CMAKE...
 add_subdirectory(CMake/quickjs)

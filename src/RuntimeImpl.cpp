@@ -126,8 +126,7 @@ bool Runtime::Start() {
     }
 
     for (const auto &item : m_Config.CompilerAddons) {
-      auto load =
-          m_CompilationInstance.LoadFile(item, ModuleType::Global);
+      auto load = m_CompilationInstance.LoadFile(item, ModuleType::Global);
       if (load.IsException()) {
         m_Logger->Error(load.Exception().AsString());
         return false;

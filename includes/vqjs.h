@@ -60,6 +60,7 @@ struct Value {
   [[nodiscard]] std::string ExceptionStack() const;
   [[nodiscard]] Value Get(const std::string &key) const;
   [[nodiscard]] Value Call(const std::vector<Value> &args) const;
+  [[nodiscard]] Value CallBind(const Value& bind, const std::vector<Value> &args) const;
   void Set(const std::string &key, const Value &obj) const;
   [[nodiscard]] std::vector<std::string> ObjectKeys() const;
 
@@ -72,11 +73,12 @@ struct Value {
   [[nodiscard]] bool IsBoolean() const;
   [[nodiscard]] bool IsException() const;
   [[nodiscard]] bool IsArray() const;
+  [[nodiscard]] bool IsFunction() const;
 
   Value operator[](const std::string &name) const;
   Value operator()(const std::vector<Value> &args) const;
-  Value& operator=(const Value& other) noexcept = default;
-  Value& operator=(Value&& other) noexcept = default;
+  Value &operator=(const Value &other) noexcept = default;
+  Value &operator=(Value &&other) noexcept = default;
 
   template <typename... Args> Value operator()(Args &&...args) const {
     std::vector<Value> argVec{std::forward<Args>(args)...};
@@ -88,6 +90,10 @@ struct Value {
   }
 
   void AddFunction(const std::string &name, const Func &, size_t args = 0);
+
+  // Will Dup the value so its leaking
+  // Example: For Function calls that return values to JS :)
+  void Live();
 
   [[nodiscard]] Value ThrowException(const std::string &message) const;
   [[nodiscard]] Value String(const std::string &data) const;
@@ -112,8 +118,10 @@ struct Value {
   [[nodiscard]] void *GetUnderlyingPtr() const;
 
 protected:
+  explicit Value(JSContext *context, JS::Value, JS::Value);
   JSContext *m_Context{nullptr};
   JS::Value m_UnderlyingValue{};
+  JS::Value m_Parent{};
   friend ValueUtils;
   friend Runtime;
 };

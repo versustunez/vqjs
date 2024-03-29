@@ -101,9 +101,21 @@ Value Value::Call(const std::vector<Value> &args) const {
   for (const auto &val : args) {
     jsValues.push_back(TO(val.m_UnderlyingValue));
   }
-  const auto ret =
-      JS_Call(m_Context, TO(m_UnderlyingValue), TO(globalVal.m_UnderlyingValue),
-              static_cast<int>(args.size()), jsValues.data());
+  const auto ret = JS_Call(m_Context, TO(m_UnderlyingValue), TO(m_Parent),
+                           static_cast<int>(args.size()), jsValues.data());
+  return Value(m_Context, FROM(ret));
+}
+
+Value Value::CallBind(const Value &bind,
+                            const std::vector<Value> &args) const {
+  const auto globalVal = Global();
+  std::vector<JSValue> jsValues;
+  jsValues.reserve(args.size());
+  for (const auto &val : args) {
+    jsValues.push_back(TO(val.m_UnderlyingValue));
+  }
+  const auto ret = JS_Call(m_Context, TO(m_UnderlyingValue), TO(bind.m_UnderlyingValue),
+                           static_cast<int>(args.size()), jsValues.data());
   return Value(m_Context, FROM(ret));
 }
 
@@ -160,11 +172,14 @@ bool Value::IsException() const {
 bool Value::IsArray() const {
   return JS_IsArray(m_Context, TO(m_UnderlyingValue));
 }
+bool Value::IsFunction() const {
+  return JS_IsFunction(m_Context, TO(m_UnderlyingValue));
+}
 
 Value Value::operator[](const std::string &name) const {
   const JSValue propValue =
       JS_GetPropertyStr(m_Context, TO(m_UnderlyingValue), name.c_str());
-  return Value(m_Context, FROM(propValue));
+  return Value(m_Context, FROM(propValue), m_UnderlyingValue);
 }
 
 Value Value::operator()(const std::vector<Value> &args) const {
@@ -249,32 +264,43 @@ Value::Value() : m_Context(nullptr), m_UnderlyingValue(FROM(JS_UNDEFINED)) {}
 
 Value::Value(JSContext *context)
     : m_Context(context),
-      m_UnderlyingValue(FROM(JS_UNDEFINED)) {}
+      m_UnderlyingValue(FROM(JS_UNDEFINED)),
+      m_Parent(FROM(JS_GetGlobalObject(context))) {}
 
 Value::Value(JSContext *context, const JS::Value val)
     : m_Context(context),
-      m_UnderlyingValue(val) {}
+      m_UnderlyingValue(val),
+      m_Parent(FROM(JS_GetGlobalObject(context))) {}
+
+Value::Value(JSContext *context, const JS::Value val, const JS::Value parent)
+    : m_Context(context),
+      m_UnderlyingValue(val),
+      m_Parent(FROM(JS_DupValue(m_Context, TO(parent)))) {}
 
 Value::~Value() {
   if (m_Context) {
     JS_FreeValue(m_Context, TO(m_UnderlyingValue));
+    JS_FreeValue(m_Context, TO(m_Parent));
   }
 }
 
 Value::Value(const Value &val)
     : m_Context(val.m_Context),
       m_UnderlyingValue(
-          FROM(JS_DupValue(m_Context, TO(val.m_UnderlyingValue)))) {}
+          FROM(JS_DupValue(m_Context, TO(val.m_UnderlyingValue)))),
+      m_Parent(FROM(JS_DupValue(m_Context, TO(val.m_Parent)))) {}
 
 Value::Value(Value &&val) noexcept
     : m_Context(val.m_Context),
-      m_UnderlyingValue(val.m_UnderlyingValue) {
+      m_UnderlyingValue(val.m_UnderlyingValue),
+      m_Parent(val.m_Parent) {
   val.m_UnderlyingValue = FROM(JS_UNDEFINED);
+  val.m_Parent = FROM(JS_UNDEFINED);
   val.m_Context = nullptr;
 }
 
 void *Value::GetUnderlyingPtr() const { return m_UnderlyingValue.u.ptr; }
-
+void Value::Live() { JS_DupValue(m_Context, TO(m_UnderlyingValue)); }
 #undef FROM
 #undef TO
 } // namespace VQJS

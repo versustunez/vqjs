@@ -2,6 +2,8 @@
 #include "vqjs.h"
 
 #include <File.h>
+#include <iostream>
+#include <mimalloc/include/mimalloc.h>
 #include <quickjs/quickjs-libc.h>
 #include <quickjs/quickjs.h>
 #include <string>
@@ -115,15 +117,68 @@ void Instance::SetStackSize(int64_t size) {
   JS_SetMaxStackSize(m_Runtime, size);
 }
 
+static void *Alloc(JSMallocState *s, size_t size) {
+  void *ptr;
+  assert(size != 0);
+
+  if (s->malloc_size + size > s->malloc_limit)
+    return nullptr;
+
+  ptr = mi_malloc(size);
+  if (!ptr)
+    return nullptr;
+  s->malloc_count++;
+  s->malloc_size += mi_malloc_usable_size(ptr);
+  return ptr;
+}
+
+static void Free(JSMallocState *s, void *ptr) {
+  if (!ptr)
+    return;
+
+  s->malloc_count--;
+  s->malloc_size -= mi_malloc_usable_size(ptr);
+  mi_free(ptr);
+}
+
+static void *Realloc(JSMallocState *s, void *ptr, size_t size) {
+  size_t old_size;
+  if (!ptr) {
+    if (size == 0)
+      return nullptr;
+    return Alloc(s, size);
+  }
+  old_size = mi_malloc_usable_size(ptr);
+  if (size == 0) {
+    s->malloc_count--;
+    s->malloc_size -= old_size;
+    mi_free(ptr);
+    return nullptr;
+  }
+
+  ptr = mi_realloc(ptr, size);
+  if (!ptr)
+    return nullptr;
+
+  s->malloc_size += mi_malloc_usable_size(ptr) - old_size;
+  return ptr;
+}
+
+static JSRuntime *CreateRuntime() {
+  static JSMallocFunctions jsMallocFunctions{Alloc, Free, Realloc,
+                                             mi_malloc_usable_size};
+  return JS_NewRuntime2(&jsMallocFunctions, nullptr);
+}
+
 Instance::Instance()
-    : m_Runtime(JS_NewRuntime()),
+    : m_Runtime(CreateRuntime()),
       m_Context(CreateContext(m_Runtime)) {
   JS_SetContextOpaque(m_Context, this);
 }
 
 Instance::Instance(std::string name)
     : m_Name(std::move(name)),
-      m_Runtime(JS_NewRuntime()),
+      m_Runtime(CreateRuntime()),
       m_Context(CreateContext(m_Runtime)) {
   JS_SetContextOpaque(m_Context, this);
 }
@@ -135,7 +190,7 @@ Instance::~Instance() {
 void Instance::Reset() {
   JS_FreeContext(m_Context);
   JS_FreeRuntime(m_Runtime);
-  m_Runtime = JS_NewRuntime();
+  m_Runtime = CreateRuntime();
   m_Context = CreateContext(m_Runtime);
   JS_SetContextOpaque(m_Context, this);
 }
