@@ -19,7 +19,7 @@ if (MSVC)
 endif ()
 
 if (CMAKE_BUILD_TYPE MATCHES "Debug")
-    add_compile_options(-O0)
+    add_compile_options(-O0 -g)
 endif ()
 
 set(qjs_raw_sources

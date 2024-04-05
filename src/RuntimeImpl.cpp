@@ -46,8 +46,8 @@ static constexpr auto FileExists = [](const Value &_,
   return _.Boolean(File::Exists(args[0].AsString()));
 };
 
-static void PrepareStd(JSContext *ctx, bool allowFS) {
-  Value global = Value::GlobalCtx(ctx);
+static void PrepareStd(const Context& context, bool allowFS) {
+  Value global = Value::GlobalCtx(context);
   {
     auto consoleV = global.Object();
     consoleV.AddFunction("log", LOGF(Info));
@@ -104,7 +104,7 @@ Runtime::ModuleLoader &Runtime::ModuleLoader::Add(const std::string &a,
 // It would be nice if there would be a native TS implementation inside C++
 Runtime::Runtime() {
   m_Logger = CreateRef<Logger>();
-  JS_SetRuntimeOpaque(m_CompilationInstance.m_Runtime, this);
+  JS_SetRuntimeOpaque(m_CompilationInstance.m_Context, this);
   PrepareStd(m_CompilationInstance.m_Context, true);
 }
 
@@ -138,9 +138,9 @@ bool Runtime::Start() {
 
 bool Runtime::Reset() {
   m_AppInstance.Reset();
-  JS_SetRuntimeOpaque(m_AppInstance.m_Runtime, this);
+  JS_SetRuntimeOpaque(m_AppInstance.m_Context, this);
   PrepareStd(m_AppInstance.m_Context, false);
-  JS_SetModuleLoaderFunc(m_AppInstance.m_Runtime, nullptr, &Loader::LoadModule,
+  JS_SetModuleLoaderFunc(m_AppInstance.m_Context, nullptr, &Loader::LoadModule,
                          this);
   if (m_ModuleLoader.Paths.contains("@"))
     m_AppInstance.SetBaseDirectory(m_ModuleLoader.Paths["@"]);

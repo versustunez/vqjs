@@ -1,8 +1,11 @@
 #include "impl.h"
+#include "internals.h"
 #include "vqjs.h"
 
 #include <cstdint>
+#include <iostream>
 #include <quickjs/quickjs.h>
+#include <utility>
 
 namespace VQJS {
 
@@ -106,16 +109,16 @@ Value Value::Call(const std::vector<Value> &args) const {
   return Value(m_Context, FROM(ret));
 }
 
-Value Value::CallBind(const Value &bind,
-                            const std::vector<Value> &args) const {
+Value Value::CallBind(const Value &bind, const std::vector<Value> &args) const {
   const auto globalVal = Global();
   std::vector<JSValue> jsValues;
   jsValues.reserve(args.size());
   for (const auto &val : args) {
     jsValues.push_back(TO(val.m_UnderlyingValue));
   }
-  const auto ret = JS_Call(m_Context, TO(m_UnderlyingValue), TO(bind.m_UnderlyingValue),
-                           static_cast<int>(args.size()), jsValues.data());
+  const auto ret =
+      JS_Call(m_Context, TO(m_UnderlyingValue), TO(bind.m_UnderlyingValue),
+              static_cast<int>(args.size()), jsValues.data());
   return Value(m_Context, FROM(ret));
 }
 
@@ -186,7 +189,7 @@ Value Value::operator()(const std::vector<Value> &args) const {
   return Call(args);
 }
 
-static std::vector<Value> ConvertToValueCall(JSContext *ctx, JSValue *args,
+static std::vector<Value> ConvertToValueCall(Context &ctx, JSValue *args,
                                              int argc) {
   std::vector<Value> valueArgs;
   valueArgs.reserve(argc);
@@ -200,10 +203,12 @@ struct ValueUtils {
   static JSValue cbHandler(JSContext *ctx, JSValue this_val, int argc,
                            JSValue *argv, int magic, JSValue *functionData) {
     constexpr JSClassID class_obj = 1;
-    if (auto *funcPtr = static_cast<Value::Func *>(
-            JS_GetOpaque2(ctx, functionData[0], class_obj))) {
-      const Value val = (*funcPtr)(Value::FromCtx(ctx, &this_val),
-                                   ConvertToValueCall(ctx, argv, argc));
+    auto *fncData = static_cast<Value::FunctionData *>(
+        JS_GetOpaque2(ctx, functionData[0], class_obj));
+    if (fncData) {
+      const Value val =
+          fncData->Function(Value::FromCtx(*fncData->Ctx, &this_val),
+                            ConvertToValueCall(*fncData->Ctx, argv, argc));
       return JS_DupValue(ctx, TO(val.m_UnderlyingValue));
     }
     return JS_UNDEFINED;
@@ -219,7 +224,8 @@ void Value::AddFunction(const std::string &name, const Func &func,
   JS_SetPropertyStr(m_Context, TO(m_UnderlyingValue), nameFncData.c_str(),
                     fncData);
 
-  const Ref<Func> funcRef = CreateRef<Func>(func);
+  const Ref<FunctionData> funcRef =
+      CreateRef<FunctionData>(FunctionData{&m_Context, func});
   JS_SetOpaque(fncData, funcRef.get());
   instancePtr->m_Functions.push_back(funcRef);
 
@@ -252,55 +258,85 @@ Runtime *Value::GetRuntime() const {
   return static_cast<Runtime *>(JS_GetRuntimeOpaque(JS_GetRuntime(m_Context)));
 }
 
-Value Value::FromCtx(JSContext *ctx, JSValue *val) {
+Value Value::FromCtx(const Context &ctx, JSValue *val) {
   return Value{ctx, FROM(JS_DupValue(ctx, *val))};
 }
 
-Value Value::GlobalCtx(JSContext *ctx) {
+Value Value::GlobalCtx(const Context &ctx) {
   return Value{ctx, FROM(JS_GetGlobalObject(ctx))};
 }
 
-Value::Value() : m_Context(nullptr), m_UnderlyingValue(FROM(JS_UNDEFINED)) {}
-
-Value::Value(JSContext *context)
-    : m_Context(context),
-      m_UnderlyingValue(FROM(JS_UNDEFINED)),
-      m_Parent(FROM(JS_GetGlobalObject(context))) {}
-
-Value::Value(JSContext *context, const JS::Value val)
-    : m_Context(context),
-      m_UnderlyingValue(val),
-      m_Parent(FROM(JS_GetGlobalObject(context))) {}
-
-Value::Value(JSContext *context, const JS::Value val, const JS::Value parent)
-    : m_Context(context),
-      m_UnderlyingValue(val),
-      m_Parent(FROM(JS_DupValue(m_Context, TO(parent)))) {}
-
-Value::~Value() {
-  if (m_Context) {
-    JS_FreeValue(m_Context, TO(m_UnderlyingValue));
-    JS_FreeValue(m_Context, TO(m_Parent));
-  }
+static JS::Value IncPtr(const JS::Value &val) {
+  if (!(JS_VALUE_HAS_REF_COUNT(val)))
+    return val;
+  auto *p = (JSRefCountHeader *)val.u.ptr;
+  p->ref_count++;
+  return val;
 }
+static int DecPtr(JS::Value &val) {
+  if (!(JS_VALUE_HAS_REF_COUNT(val))) {
+    return -1;
+  }
+  auto *p = (JSRefCountHeader *)val.u.ptr;
+  assert(p->ref_count > 0);
+  p->ref_count--;
+  return p->ref_count;
+}
+
+Value::Value() = default;
+
+Value::Value(const Context &context) : m_Context(context) {}
+
+Value::Value(const Context &context, const JS::Value val)
+    : m_Context(context),
+      m_UnderlyingValue(val),
+      m_Parent(FROM(JS_GetGlobalObject(context))) {}
+
+Value::Value(const Context &context, const JS::Value val,
+             const JS::Value parent)
+    : m_Context(context),
+      m_UnderlyingValue(val),
+      m_Parent(IncPtr(parent)) {}
+
+Value::~Value() { Release(); }
 
 Value::Value(const Value &val)
     : m_Context(val.m_Context),
-      m_UnderlyingValue(
-          FROM(JS_DupValue(m_Context, TO(val.m_UnderlyingValue)))),
-      m_Parent(FROM(JS_DupValue(m_Context, TO(val.m_Parent)))) {}
+      m_UnderlyingValue(IncPtr(m_UnderlyingValue)),
+      m_Parent(IncPtr(m_Parent)) {}
 
 Value::Value(Value &&val) noexcept
     : m_Context(val.m_Context),
       m_UnderlyingValue(val.m_UnderlyingValue),
       m_Parent(val.m_Parent) {
-  val.m_UnderlyingValue = FROM(JS_UNDEFINED);
-  val.m_Parent = FROM(JS_UNDEFINED);
-  val.m_Context = nullptr;
+  val.m_UnderlyingValue = {};
+  val.m_Parent = {};
+  const Context ctx{};
+  val.m_Context = ctx;
 }
 
 void *Value::GetUnderlyingPtr() const { return m_UnderlyingValue.u.ptr; }
-void Value::Live() { JS_DupValue(m_Context, TO(m_UnderlyingValue)); }
+void Value::Live() const { IncPtr(m_UnderlyingValue); }
+
+void Value::Release() {
+  if (DecPtr(m_UnderlyingValue) == 0) {
+    __JS_FreeValue(m_Context, TO(m_UnderlyingValue));
+  }
+  if (DecPtr(m_Parent) == 0) {
+    __JS_FreeValue(m_Context, TO(m_Parent));
+  }
+}
+
+Value &Value::operator=(const Value &other) noexcept {
+  if (&other != this) {
+    Release();
+    m_Context = other.m_Context;
+    m_UnderlyingValue = IncPtr(other.m_UnderlyingValue);
+    m_Parent = IncPtr(other.m_Parent);
+  }
+  return *this;
+}
+
 #undef FROM
 #undef TO
 } // namespace VQJS
