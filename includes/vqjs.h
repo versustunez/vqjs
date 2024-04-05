@@ -2,7 +2,6 @@
 #include "internals.h"
 #include "vqjs-modules.h"
 
-#include <atomic>
 #include <cassert>
 #include <cstdint>
 #include <functional>
@@ -60,7 +59,7 @@ struct Value {
   typedef std::function<Value(const Value &, const std::vector<Value> &args)>
       Func;
   struct FunctionData {
-    Context *Ctx;
+    Context Ctx;
     Func Function;
   };
 
@@ -105,7 +104,10 @@ struct Value {
   Value operator()(const std::vector<Value> &args) const;
   Value &operator=(const Value &other) noexcept;
 
-  template <typename... Args> Value operator()(Args &&...args) const {
+  template <typename T> struct IsValue : std::is_convertible<T, Value> {};
+  template <typename... Args,
+            typename = std::enable_if_t<std::conjunction_v<IsValue<Args>...>>>
+  Value operator()(Args &&...args) const {
     std::vector<Value> argVec{std::forward<Args>(args)...};
     return Call(argVec);
   }

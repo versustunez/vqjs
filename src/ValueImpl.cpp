@@ -123,8 +123,9 @@ Value Value::CallBind(const Value &bind, const std::vector<Value> &args) const {
 }
 
 void Value::Set(const std::string &key, const Value &obj) const {
+  obj.Live();
   JS_SetPropertyStr(m_Context, TO(m_UnderlyingValue), key.c_str(),
-                    JS_DupValue(m_Context, TO(obj.m_UnderlyingValue)));
+                    TO(obj.m_UnderlyingValue));
 }
 
 std::vector<std::string> Value::ObjectKeys() const {
@@ -207,8 +208,8 @@ struct ValueUtils {
         JS_GetOpaque2(ctx, functionData[0], class_obj));
     if (fncData) {
       const Value val =
-          fncData->Function(Value::FromCtx(*fncData->Ctx, &this_val),
-                            ConvertToValueCall(*fncData->Ctx, argv, argc));
+          fncData->Function(Value::FromCtx(fncData->Ctx, &this_val),
+                            ConvertToValueCall(fncData->Ctx, argv, argc));
       return JS_DupValue(ctx, TO(val.m_UnderlyingValue));
     }
     return JS_UNDEFINED;
@@ -225,7 +226,7 @@ void Value::AddFunction(const std::string &name, const Func &func,
                     fncData);
 
   const Ref<FunctionData> funcRef =
-      CreateRef<FunctionData>(FunctionData{&m_Context, func});
+      CreateRef<FunctionData>(FunctionData{m_Context, func});
   JS_SetOpaque(fncData, funcRef.get());
   instancePtr->m_Functions.push_back(funcRef);
 
@@ -289,8 +290,7 @@ Value::Value(const Context &context) : m_Context(context) {}
 
 Value::Value(const Context &context, const JS::Value val)
     : m_Context(context),
-      m_UnderlyingValue(val),
-      m_Parent(FROM(JS_GetGlobalObject(context))) {}
+      m_UnderlyingValue(val) {}
 
 Value::Value(const Context &context, const JS::Value val,
              const JS::Value parent)
@@ -302,8 +302,8 @@ Value::~Value() { Release(); }
 
 Value::Value(const Value &val)
     : m_Context(val.m_Context),
-      m_UnderlyingValue(IncPtr(m_UnderlyingValue)),
-      m_Parent(IncPtr(m_Parent)) {}
+      m_UnderlyingValue(IncPtr(val.m_UnderlyingValue)),
+      m_Parent(IncPtr(val.m_Parent)) {}
 
 Value::Value(Value &&val) noexcept
     : m_Context(val.m_Context),

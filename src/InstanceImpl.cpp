@@ -2,7 +2,6 @@
 #include "vqjs.h"
 
 #include <File.h>
-#include <iostream>
 #include <quickjs/quickjs-libc.h>
 #include <quickjs/quickjs.h>
 #include <string>

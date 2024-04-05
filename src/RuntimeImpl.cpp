@@ -8,7 +8,7 @@
 namespace VQJS {
 #define LOGF(Method)                                                           \
   [](const Value &_, const std::vector<Value> &args) {                         \
-    auto &logger = _.GetRuntime()->GetLogger();                                \
+    auto &logger = _.GetRuntime() -> GetLogger();                              \
     for (const auto &item : args) {                                            \
       logger.Method(item.AsString());                                          \
     }                                                                          \
@@ -46,7 +46,7 @@ static constexpr auto FileExists = [](const Value &_,
   return _.Boolean(File::Exists(args[0].AsString()));
 };
 
-static void PrepareStd(const Context& context, bool allowFS) {
+static void PrepareStd(const Context &context, bool allowFS) {
   Value global = Value::GlobalCtx(context);
   {
     auto consoleV = global.Object();
@@ -211,8 +211,7 @@ void Runtime::WriteTSConfig() const {
     added = ',';
   }
   config << "}}," << includes.str() << "]}";
-  VQJS::File::Write(m_AppInstance.m_BaseDirectory + "tsconfig.json",
-                    config.str());
+  File::Write(m_AppInstance.m_BaseDirectory + "tsconfig.json", config.str());
 }
 
 void Runtime::SetLogger(Ref<Logger> &logger) { m_Logger = logger; }
