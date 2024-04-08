@@ -1,7 +1,8 @@
 const compilerOptions = {
     target: ts.ModuleKind.ESNext,
     module: ts.ScriptTarget.ESNext,
-    experimentalDecorators: true
+    experimentalDecorators: true,
+    useDefineForClassFields: false
 };
 
 class TsCompile {
@@ -33,6 +34,25 @@ class TsCompile {
     static addMetadata(filename) {
         return globalThis.handleMetadata ? globalThis.handleMetadata(filename) : ``;
     }
+
+    static writeConfig(output, files = {}) {
+        const options = {
+            compilerOptions: {
+                target: "ESNext",
+                module: "ESNext",
+                experimentalDecorators: true,
+                useDefineForClassFields: false,
+                paths: {}
+            },
+            includes: []
+        };
+        for (let file in files) {
+            options.compilerOptions.paths[file] = [files[file]];
+            options.includes.push(files[file] + "*/*")
+        }
+        fs.write(output, JSON.stringify(options, null, 2))
+    }
 }
 
 globalThis.compile = TsCompile.compileFromFile;
+globalThis.writeConfig = TsCompile.writeConfig;

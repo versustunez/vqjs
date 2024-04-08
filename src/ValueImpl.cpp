@@ -50,19 +50,22 @@ std::string Value::AsString() const {
   JS_FreeCString(m_Context, str);
   return result;
 }
+// Hack return because its faster... and if the value is wrong the Engine will
+// not like it anyway
 double Value::AsDouble() const {
-  double result;
-  JS_ToFloat64(m_Context, &result, TO(m_UnderlyingValue));
-  return result;
+  if (m_UnderlyingValue.tag == JS_TAG_FLOAT64) {
+    return m_UnderlyingValue.u.float64;
+  }
+  return m_UnderlyingValue.u.int32;
 }
 
-bool Value::AsBool() const {
-  return JS_ToBool(m_Context, TO(m_UnderlyingValue));
-}
+bool Value::AsBool() const { return m_UnderlyingValue.u.int32; }
+
 int64_t Value::AsInt() const {
-  int result;
-  JS_ToInt32(m_Context, &result, TO(m_UnderlyingValue));
-  return result;
+  if (m_UnderlyingValue.tag == JS_TAG_FLOAT64) {
+    return static_cast<int64_t>(m_UnderlyingValue.u.float64);
+  }
+  return m_UnderlyingValue.u.int32;
 }
 
 std::vector<Value> Value::AsArray() const {

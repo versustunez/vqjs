@@ -196,22 +196,21 @@ std::string Runtime::TranspileFile(const std::string &file) const {
 }
 
 void Runtime::WriteTSConfig() const {
-  std::stringstream includes;
-  includes << R"_("includes": [)_";
-  std::stringstream config;
-  config << R"_({"compilerOptions": {"baseUrl": ".", "paths": {)_";
-  char added = ' ';
-
+  auto global = m_CompilationInstance.Global();
+  auto fileObj = global.Object();
   for (const auto &[fst, snd] : m_ModuleLoader.Paths) {
     std::string path =
         std::filesystem::relative(snd, m_AppInstance.m_BaseDirectory)
-            .generic_string();
-    config << added << '"' << fst << "/*\":[\"" << path << "/*\"]";
-    includes << added << '"' << path << "/**/*\"";
-    added = ',';
+            .generic_string() +
+        "/*";
+    fileObj.Set(fst + "/*", fileObj.String(path));
   }
-  config << "}}," << includes.str() << "]}";
-  File::Write(m_AppInstance.m_BaseDirectory + "tsconfig.json", config.str());
+  const auto config = global["writeConfig"](
+      global.String(m_AppInstance.m_BaseDirectory + "tsconfig.json"), fileObj);
+  if (config.IsException()) {
+    m_Logger->Error("Failed to write TSConfig");
+    m_Logger->Error(config.Exception().AsString());
+  }
 }
 
 void Runtime::SetLogger(Ref<Logger> &logger) { m_Logger = logger; }
