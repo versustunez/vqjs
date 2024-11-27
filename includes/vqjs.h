@@ -43,6 +43,8 @@ struct Context {
   Context &operator=(Context &&other) noexcept = delete;
   static void PrintStats();
 
+  operator bool() const { return Ctx != nullptr && Rt != nullptr; }
+
 private:
   JSRuntime *Rt;
   JSContext *Ctx;
@@ -197,10 +199,11 @@ protected:
   std::string m_Name{"Unknown"};
   Context m_Context;
 
-  std::vector<Ref<Value::FunctionData>> m_Functions{};
+  std::unordered_map<std::string, Ref<Value::FunctionData>> m_Functions{};
 
   friend Value;
   friend Runtime;
+  friend ValueUtils;
 };
 
 struct Runtime {

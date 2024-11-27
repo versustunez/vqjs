@@ -5,7 +5,7 @@
 #include <cstdint>
 #include <iostream>
 #include <quickjs/quickjs.h>
-#include <utility>
+#include <random>
 
 namespace VQJS {
 
@@ -206,32 +206,60 @@ static std::vector<Value> ConvertToValueCall(Context &ctx, JSValue *args,
 struct ValueUtils {
   static JSValue cbHandler(JSContext *ctx, JSValue this_val, int argc,
                            JSValue *argv, int magic, JSValue *functionData) {
-    constexpr JSClassID class_obj = 1;
-    auto *fncData = static_cast<Value::FunctionData *>(
-        JS_GetOpaque2(ctx, functionData[0], class_obj));
-    if (fncData) {
+    auto *instancePtr = static_cast<Instance *>(JS_GetContextOpaque(ctx));
+    if (!instancePtr) {
+      return JS_UNDEFINED;
+    }
+
+    const char *str = JS_ToCString(ctx, functionData[0]);
+    if (str == nullptr)
+      return JS_UNDEFINED;
+    std::cout << "HERE?!\n";
+    const auto fncPtr = instancePtr->m_Functions[str];
+
+    JS_FreeCString(ctx, str);
+
+    if (fncPtr != nullptr) {
+      std::cout << "HERE?11!\n";
       const Value val =
-          fncData->Function(Value::FromCtx(fncData->Ctx, &this_val),
-                            ConvertToValueCall(fncData->Ctx, argv, argc));
+          fncPtr->Function(Value::FromCtx(fncPtr->Ctx, &this_val),
+                           ConvertToValueCall(fncPtr->Ctx, argv, argc));
       return JS_DupValue(ctx, TO(val.m_UnderlyingValue));
     }
     return JS_UNDEFINED;
   }
 };
 
+static std::string random_string(std::size_t length) {
+  const std::string CHARACTERS =
+      "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
+
+  std::random_device random_device;
+  std::mt19937 generator(random_device());
+  std::uniform_int_distribution<> distribution(0, CHARACTERS.size() - 1);
+
+  std::string random_string;
+
+  for (std::size_t i = 0; i < length; ++i) {
+    random_string += CHARACTERS[distribution(generator)];
+  }
+
+  return random_string;
+}
+
 void Value::AddFunction(const std::string &name, const Func &func,
                         const size_t args) {
   // Create the JavaScript function with the C function pointer as the callback
   auto *instancePtr = static_cast<Instance *>(JS_GetContextOpaque(m_Context));
-  JSValue fncData = JS_NewObject(m_Context);
+  const Ref<FunctionData> funcRef =
+      CreateRef<FunctionData>(FunctionData{m_Context, func});
+  std::string hash = random_string(16) + name;
+  instancePtr->m_Functions[hash] = funcRef;
+
+  JSValue fncData = JS_NewString(m_Context, hash.c_str());
   const std::string nameFncData = "__fncData" + name;
   JS_SetPropertyStr(m_Context, TO(m_UnderlyingValue), nameFncData.c_str(),
                     fncData);
-
-  const Ref<FunctionData> funcRef =
-      CreateRef<FunctionData>(FunctionData{m_Context, func});
-  JS_SetOpaque(fncData, funcRef.get());
-  instancePtr->m_Functions.push_back(funcRef);
 
   const JSValue fnc = JS_NewCFunctionData(m_Context, &ValueUtils::cbHandler,
                                           args, 1, 1, &fncData);
@@ -274,12 +302,8 @@ typedef struct JSRefCountHeader {
   int ref_count;
 } JSRefCountHeader;
 
-static JS::Value IncPtr(const JS::Value &val) {
-  if (!(JS_VALUE_HAS_REF_COUNT(val)))
-    return val;
-  auto *p = static_cast<JSRefCountHeader *>(val.u.ptr);
-  p->ref_count++;
-  return val;
+static JS::Value IncPtr(const Context &context, const JS::Value &val) {
+  return FROM(JS_DupValue(context, TO(val)));
 }
 static int DecPtr(JS::Value &val) {
   if (!(JS_VALUE_HAS_REF_COUNT(val))) {
@@ -303,14 +327,14 @@ Value::Value(const Context &context, const JS::Value val,
              const JS::Value parent)
     : m_Context(context),
       m_UnderlyingValue(val),
-      m_Parent(IncPtr(parent)) {}
+      m_Parent(IncPtr(context, parent)) {}
 
 Value::~Value() { Release(); }
 
 Value::Value(const Value &val)
     : m_Context(val.m_Context),
-      m_UnderlyingValue(IncPtr(val.m_UnderlyingValue)),
-      m_Parent(IncPtr(val.m_Parent)) {}
+      m_UnderlyingValue(IncPtr(m_Context, val.m_UnderlyingValue)),
+      m_Parent(IncPtr(m_Context, val.m_Parent)) {}
 
 Value::Value(Value &&val) noexcept
     : m_Context(val.m_Context),
@@ -323,23 +347,22 @@ Value::Value(Value &&val) noexcept
 }
 
 void *Value::GetUnderlyingPtr() const { return m_UnderlyingValue.u.ptr; }
-void Value::Live() const { IncPtr(m_UnderlyingValue); }
+void Value::Live() const { IncPtr(m_Context, m_UnderlyingValue); }
 
 void Value::Release() {
-  if (DecPtr(m_UnderlyingValue) == 0) {
-    JS_FreeValue(m_Context, TO(m_UnderlyingValue));
+  if (!m_Context) {
+    return;
   }
-  if (DecPtr(m_Parent) == 0) {
-    JS_FreeValue(m_Context, TO(m_Parent));
-  }
+  JS_FreeValue(m_Context, TO(m_UnderlyingValue));
+  JS_FreeValue(m_Context, TO(m_Parent));
 }
 
 Value &Value::operator=(const Value &other) noexcept {
   if (&other != this) {
-    Release();
     m_Context = other.m_Context;
-    m_UnderlyingValue = IncPtr(other.m_UnderlyingValue);
-    m_Parent = IncPtr(other.m_Parent);
+    m_UnderlyingValue = IncPtr(m_Context, other.m_UnderlyingValue);
+    m_Parent = IncPtr(m_Context, other.m_Parent);
+    Release();
   }
   return *this;
 }
