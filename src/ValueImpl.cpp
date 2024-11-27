@@ -214,13 +214,11 @@ struct ValueUtils {
     const char *str = JS_ToCString(ctx, functionData[0]);
     if (str == nullptr)
       return JS_UNDEFINED;
-    std::cout << "HERE?!\n";
     const auto fncPtr = instancePtr->m_Functions[str];
 
     JS_FreeCString(ctx, str);
 
     if (fncPtr != nullptr) {
-      std::cout << "HERE?11!\n";
       const Value val =
           fncPtr->Function(Value::FromCtx(fncPtr->Ctx, &this_val),
                            ConvertToValueCall(fncPtr->Ctx, argv, argc));
