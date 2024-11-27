@@ -6,55 +6,25 @@
 
 namespace VQJS {
 
-static void *Alloc(JSMallocState *s, size_t size) {
-  void *ptr;
-  assert(size != 0);
-
-  if (s->malloc_size + size > s->malloc_limit)
-    return nullptr;
-
-  ptr = mi_malloc(size);
-  if (!ptr)
-    return nullptr;
-  s->malloc_count++;
-  s->malloc_size += mi_malloc_usable_size(ptr);
-  return ptr;
+static void *Calloc(void *opaque, size_t count, size_t size) {
+  return mi_calloc(count, size);
 }
 
-static void Free(JSMallocState *s, void *ptr) {
+static void *Malloc(void *opaque, size_t size) { return mi_malloc(size); }
+
+static void Free(void *opaque, void *ptr) {
   if (!ptr)
     return;
-
-  s->malloc_count--;
-  s->malloc_size -= mi_malloc_usable_size(ptr);
   mi_free(ptr);
 }
 
-static void *Realloc(JSMallocState *s, void *ptr, size_t size) {
-  if (!ptr) {
-    if (size == 0)
-      return nullptr;
-    return Alloc(s, size);
-  }
-  size_t old_size = mi_malloc_usable_size(ptr);
-  if (size == 0) {
-    s->malloc_count--;
-    s->malloc_size -= old_size;
-    mi_free(ptr);
-    return nullptr;
-  }
-
-  ptr = mi_realloc(ptr, size);
-  if (!ptr)
-    return nullptr;
-
-  s->malloc_size += mi_malloc_usable_size(ptr) - old_size;
-  return ptr;
+static void *Realloc(void *opaque, void *ptr, size_t size) {
+  return mi_realloc(ptr, size);
 }
 
 static JSRuntime *CreateRuntime() {
-  static JSMallocFunctions jsMallocFunctions{Alloc, Free, Realloc,
-                                             mi_malloc_usable_size};
+  static const JSMallocFunctions jsMallocFunctions = {
+      Calloc, Malloc, Free, Realloc, mi_malloc_usable_size};
   return JS_NewRuntime2(&jsMallocFunctions, nullptr);
 }
 

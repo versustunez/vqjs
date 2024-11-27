@@ -270,10 +270,14 @@ Value Value::GlobalCtx(const Context &ctx) {
   return Value{ctx, FROM(JS_GetGlobalObject(ctx))};
 }
 
+typedef struct JSRefCountHeader {
+  int ref_count;
+} JSRefCountHeader;
+
 static JS::Value IncPtr(const JS::Value &val) {
   if (!(JS_VALUE_HAS_REF_COUNT(val)))
     return val;
-  auto *p = (JSRefCountHeader *)val.u.ptr;
+  auto *p = static_cast<JSRefCountHeader *>(val.u.ptr);
   p->ref_count++;
   return val;
 }
@@ -281,7 +285,7 @@ static int DecPtr(JS::Value &val) {
   if (!(JS_VALUE_HAS_REF_COUNT(val))) {
     return -1;
   }
-  auto *p = (JSRefCountHeader *)val.u.ptr;
+  auto *p = static_cast<JSRefCountHeader *>(val.u.ptr);
   assert(p->ref_count > 0);
   p->ref_count--;
   return p->ref_count;
@@ -323,10 +327,10 @@ void Value::Live() const { IncPtr(m_UnderlyingValue); }
 
 void Value::Release() {
   if (DecPtr(m_UnderlyingValue) == 0) {
-    __JS_FreeValue(m_Context, TO(m_UnderlyingValue));
+    JS_FreeValue(m_Context, TO(m_UnderlyingValue));
   }
   if (DecPtr(m_Parent) == 0) {
-    __JS_FreeValue(m_Context, TO(m_Parent));
+    JS_FreeValue(m_Context, TO(m_Parent));
   }
 }
 

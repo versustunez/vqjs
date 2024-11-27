@@ -1,6 +1,6 @@
 [submodule "vendor/quickjs"]
 	path = vendor/quickjs
-	url = https://github.com/versustunez/quickjs.git
+	url = https://github.com/quickjs-ng/quickjs.git
 [submodule "vendor/mimalloc"]
 	path = vendor/mimalloc
 	url = https://github.com/microsoft/mimalloc.git

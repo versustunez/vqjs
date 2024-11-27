@@ -31,6 +31,8 @@ if (${IS_DEBUG_BUILD})
     add_compile_definitions(VQJSDEBUG)
 endif ()
 
+add_definitions(-DJS_NAN_BOXING=0)
+
 # ADD Directories
 add_subdirectory(CMake)
 add_subdirectory(src)

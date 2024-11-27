@@ -22,6 +22,8 @@ if (CMAKE_BUILD_TYPE MATCHES "Debug")
     add_compile_options(-O0 -g)
 endif ()
 
+add_definitions(-DJS_NAN_BOXING=0)
+
 set(qjs_raw_sources
         cutils.c
         libbf.c
