@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.9)
+cmake_minimum_required(VERSION 3.22)
 project(quickjs LANGUAGES C)
 
 set(CMAKE_C_VISIBILITY_PRESET hidden)
@@ -16,6 +16,7 @@ message(STATUS "Building with ${CMAKE_C_COMPILER_ID} ${CMAKE_C_COMPILER_VERSION}
 
 if (MSVC)
     add_compile_definitions(WIN32_LEAN_AND_MEAN)
+    add_compile_options(/experimental:c11atomics /NODEFAULTLIB)
 endif ()
 
 if (CMAKE_BUILD_TYPE MATCHES "Debug")
@@ -25,8 +26,7 @@ endif ()
 add_definitions(-DJS_NAN_BOXING=0)
 
 set(qjs_raw_sources
-        cutils.c
-        libbf.c
+        dtoa.c
         libregexp.c
         libunicode.c
         quickjs.c
@@ -45,6 +45,12 @@ if (NOT MSVC)
 endif ()
 
 add_library(qjs ${qjs_sources})
+set_target_properties(qjs PROPERTIES POSITION_INDEPENDENT_CODE ON)
+set_target_properties(qjs PROPERTIES
+        ARCHIVE_OUTPUT_NAME_DEBUG "qjs.debug"
+        ARCHIVE_OUTPUT_NAME_RELEASE "qjs.release"
+        PREFIX ""
+)
 target_compile_definitions(qjs PRIVATE ${qjs_defines})
 if (CMAKE_BUILD_TYPE MATCHES Debug OR DUMP_LEAKS)
     target_compile_definitions(qjs PRIVATE

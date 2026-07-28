@@ -6,13 +6,15 @@ on:
     branches:
       - 'main'
 
+permissions:
+  contents: read
+
 concurrency:
   group: ${{ github.ref }}
   cancel-in-progress: true
 
 env:
   BUILD_DIR: Builds
-  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
   CMAKE_BUILD_PARALLEL_LEVEL: 3
 
 jobs:
@@ -21,12 +23,13 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ ubuntu-20.04, windows-latest ]
+        os: [ ubuntu-24.04, windows-latest ]
         buildType: [ Debug, Release ]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           submodules: true
+      - run: rustup update nightly && rustup default nightly
       - name: Configure (Linux)
         if: runner.os == 'Linux'
         shell: bash
@@ -34,7 +37,7 @@ jobs:
       - name: Configure (Windows)
         if: runner.os == 'Windows'
         shell: bash
-        run: cmake -B ${{ env.BUILD_DIR }} -DCMAKE_BUILD_TYPE=${{ matrix.buildType }} -T ClangCL .
+        run: cmake -B ${{ env.BUILD_DIR }} -DCMAKE_BUILD_TYPE=${{ matrix.buildType }} .
       - name: Build
         shell: bash
         run: cmake --build ${{ env.BUILD_DIR }} --config ${{ matrix.buildType }} --parallel 4

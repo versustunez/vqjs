@@ -12,8 +12,11 @@ namespace VQJS {
 #define FROM(obj) Utils::FromJSValue(obj)
 #define TO(obj) Utils::ToJSValue(obj)
 
-static JSValue EvalBuffer(JSContext *ctx, const char *buf, size_t buf_len,
-                          const std::string &filename, int eval_flags,
+static JSValue EvalBuffer(JSContext *ctx,
+                          const char *buf,
+                          size_t buf_len,
+                          const std::string &filename,
+                          int eval_flags,
                           bool nonEval) {
 
   if ((eval_flags & JS_EVAL_TYPE_MASK) == JS_EVAL_TYPE_MODULE) {
@@ -29,8 +32,8 @@ static JSValue EvalBuffer(JSContext *ctx, const char *buf, size_t buf_len,
   return JS_UNDEFINED;
 }
 
-static JSValue EvalFile(JSContext *ctx, const std::string &filename, int module,
-                        bool eval) {
+static JSValue
+EvalFile(JSContext *ctx, const std::string &filename, int module, bool eval) {
   auto *instance = static_cast<Instance *>(JS_GetContextOpaque(ctx));
   auto *runtime =
       static_cast<Runtime *>(JS_GetRuntimeOpaque(JS_GetRuntime(ctx)));
@@ -72,7 +75,8 @@ static int ModuleTypeToNumber(ModuleType type) {
   return -1;
 }
 
-Value Instance::LoadFile(const std::string &file, ModuleType type,
+Value Instance::LoadFile(const std::string &file,
+                         ModuleType type,
                          bool eval) const {
   std::string realFile = file[0] == '@' ? file : m_BaseDirectory + file;
   return Value(m_Context, FROM(EvalFile(m_Context, realFile,
@@ -104,7 +108,15 @@ Value Instance::Int64(int64_t data) const {
 Value Instance::Undefined() const {
   return Value(m_Context, FROM(JS_UNDEFINED));
 }
-void Instance::SetStackSize(int64_t size) {
+Value Instance::GetException() const {
+  if (JS_HasException(m_Context)) {
+    auto ret = JS_GetException(m_Context);
+    return Value{m_Context, FROM(JS_DupValue(m_Context, ret))};
+  }
+  return Undefined();
+}
+
+void Instance::SetStackSize(int64_t size) const {
   JS_SetMaxStackSize(m_Context, size);
 }
 

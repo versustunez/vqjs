@@ -1,8 +1,8 @@
 ---
 BasedOnStyle: LLVM
-AlignAfterOpenBracket: Align
+AlignAfterOpenBracket: true
 AlignEscapedNewlines: Right
-AlignOperands: true
+AlignOperands: Align
 AlignTrailingComments: true
 AllowAllArgumentsOnNextLine: true
 AllowAllConstructorInitializersOnNextLine: false
@@ -11,7 +11,7 @@ AllowShortBlocksOnASingleLine: Always
 AllowShortCaseLabelsOnASingleLine: true
 AllowShortIfStatementsOnASingleLine: Never
 BinPackArguments: true
-BinPackParameters: true
+BinPackParameters: OnePerLine
 CompactNamespaces: false
 ConstructorInitializerAllOnOneLineOrOnePerLine: true
 FixNamespaceComments: true

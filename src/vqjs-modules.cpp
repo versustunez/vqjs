@@ -7,7 +7,6 @@ namespace VQJS {
 void Logger::Info(const std::string &lines) const {
   std::cout << "[VQJS][Info] >> " << lines << "\n";
 }
-
 void Logger::Debug(const std::string &lines) const {
   std::cout << "[VQJS][Debug] >> " << lines << "\n";
 }

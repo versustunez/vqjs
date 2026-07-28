@@ -1,3 +1,4 @@
+#include "quickjs/quickjs-libc.h"
 #include "quickjs/quickjs.h"
 #include "vqjs.h"
 
@@ -24,7 +25,7 @@ static void *Realloc(void *opaque, void *ptr, size_t size) {
 
 static JSRuntime *CreateRuntime() {
   static const JSMallocFunctions jsMallocFunctions = {
-      Calloc, Malloc, Free, Realloc, mi_malloc_usable_size};
+      Calloc, Malloc, Free, Realloc, mi_usable_size};
   return JS_NewRuntime2(&jsMallocFunctions, nullptr);
 }
 
@@ -42,6 +43,7 @@ Context::Context(Instance *instance)
       Ctx(CreateContext(Rt)),
       Count(new int(1)) {
   JS_SetContextOpaque(Ctx, instance);
+  js_std_init_handlers(Rt);
 }
 Context::Context(const Context &o) : Rt(o.Rt), Ctx(o.Ctx), Count(o.Count) {
   ++(*Count);
@@ -69,6 +71,7 @@ void Context::Release() const {
   if (*Count <= 0) {
     delete Count;
     // raise(SIGTRAP);
+    js_std_free_handlers(Rt);
     JS_FreeContext(Ctx);
     JS_FreeRuntime(Rt);
   }

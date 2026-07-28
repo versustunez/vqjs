@@ -15,8 +15,14 @@ namespace VQJS {
   Value { m_Context, Utils::FromJSValue(obj) }
 
 // SharedBuffers are always uint8_t ptr, so we can easily delete them :)
-static void DeallocateSharedBuffer(JSRuntime *, void *, void *ptr) {
-  delete[] static_cast<uint8_t *>(ptr);
+static void* DeallocateSharedBuffer(JSRuntime *, void *,
+                                           void *ptr, size_t size) {
+  if (size == 0) {
+    delete[] static_cast<uint8_t *>(ptr);
+  } else {
+    // Not supported
+  }
+  return ptr;
 }
 
 Value Value::Global() const {
@@ -30,14 +36,14 @@ Value Value::NewArray() const { return VNEW(JS_NewArray(m_Context)); }
 Value Value::SharedArrayBuffer(const size_t bytes) const {
   // we always creating shared Buffers here...
   auto *buffer = new uint8_t[bytes / sizeof(uint8_t)];
-  const JSValue val = JS_NewArrayBuffer(m_Context, buffer, bytes,
+  const JSValue val = JS_NewArrayBuffer(m_Context, buffer, bytes, 0,
                                         &DeallocateSharedBuffer, nullptr, true);
   return VNEW(val);
 }
 
 Value Value::SharedArrayBuffer(uint8_t *buf, const size_t bytes) const {
   const JSValue val = JS_NewArrayBuffer(m_Context, buf, bytes * sizeof(uint8_t),
-                                        nullptr, nullptr, true);
+                                        0, nullptr, nullptr, true);
   return VNEW(val);
 }
 
@@ -85,6 +91,10 @@ std::vector<Value> Value::AsArray() const {
   return data;
 }
 
+Promise Value::AsPromise() {
+  return Promise(*this);
+}
+
 Value Value::Exception() const {
   return Value(m_Context, FROM(JS_GetException(m_Context)));
 }
@@ -99,6 +109,7 @@ std::string Value::ExceptionStack() const {
   JS_FreeCString(m_Context, str);
   return result;
 }
+
 Value Value::Get(const std::string &key) const { return (*this)[key]; }
 Value Value::Call(const std::vector<Value> &args) const {
   const auto globalVal = Global();
@@ -176,12 +187,15 @@ bool Value::IsBoolean() const { return JS_IsBool(TO(m_UnderlyingValue)); }
 bool Value::IsException() const {
   return JS_IsException(TO(m_UnderlyingValue));
 }
-bool Value::IsArray() const {
-  return JS_IsArray(m_Context, TO(m_UnderlyingValue));
-}
+bool Value::IsArray() const { return JS_IsArray(TO(m_UnderlyingValue)); }
 bool Value::IsFunction() const {
   return JS_IsFunction(m_Context, TO(m_UnderlyingValue));
 }
+bool Value::IsUndefined() const {
+  return JS_IsUndefined(TO(m_UnderlyingValue));
+}
+bool Value::IsNull() const { return JS_IsNull(TO(m_UnderlyingValue)); }
+bool Value::IsPromise() const { return JS_IsPromise(TO(m_UnderlyingValue)); }
 
 Value Value::operator[](const std::string &name) const {
   const JSValue propValue =
@@ -193,8 +207,8 @@ Value Value::operator()(const std::vector<Value> &args) const {
   return Call(args);
 }
 
-static std::vector<Value> ConvertToValueCall(Context &ctx, JSValue *args,
-                                             int argc) {
+static std::vector<Value>
+ConvertToValueCall(Context &ctx, JSValue *args, int argc) {
   std::vector<Value> valueArgs;
   valueArgs.reserve(argc);
   for (size_t i = 0; i < argc; i++) {
@@ -204,8 +218,12 @@ static std::vector<Value> ConvertToValueCall(Context &ctx, JSValue *args,
 }
 
 struct ValueUtils {
-  static JSValue cbHandler(JSContext *ctx, JSValue this_val, int argc,
-                           JSValue *argv, int magic, JSValue *functionData) {
+  static JSValue cbHandler(JSContext *ctx,
+                           JSValue this_val,
+                           int argc,
+                           JSValue *argv,
+                           int magic,
+                           JSValue *functionData) {
     auto *instancePtr = static_cast<Instance *>(JS_GetContextOpaque(ctx));
     if (!instancePtr) {
       return JS_UNDEFINED;
@@ -245,7 +263,8 @@ static std::string random_string(std::size_t length) {
   return random_string;
 }
 
-void Value::AddFunction(const std::string &name, const Func &func,
+void Value::AddFunction(const std::string &name,
+                        const Func &func,
                         const size_t args) {
   // Create the JavaScript function with the C function pointer as the callback
   auto *instancePtr = static_cast<Instance *>(JS_GetContextOpaque(m_Context));
@@ -321,7 +340,8 @@ Value::Value(const Context &context, const JS::Value val)
     : m_Context(context),
       m_UnderlyingValue(val) {}
 
-Value::Value(const Context &context, const JS::Value val,
+Value::Value(const Context &context,
+             const JS::Value val,
              const JS::Value parent)
     : m_Context(context),
       m_UnderlyingValue(val),
@@ -347,7 +367,7 @@ Value::Value(Value &&val) noexcept
 void *Value::GetUnderlyingPtr() const { return m_UnderlyingValue.u.ptr; }
 void Value::Live() const { IncPtr(m_Context, m_UnderlyingValue); }
 
-void Value::Release() {
+void Value::Release() const {
   if (!m_Context) {
     return;
   }
@@ -357,10 +377,15 @@ void Value::Release() {
 
 Value &Value::operator=(const Value &other) noexcept {
   if (&other != this) {
-    m_Context = other.m_Context;
-    m_UnderlyingValue = IncPtr(m_Context, other.m_UnderlyingValue);
-    m_Parent = IncPtr(m_Context, other.m_Parent);
+    auto ctx = other.m_Context;
+    auto value = IncPtr(ctx, other.m_UnderlyingValue);
+    auto parent = IncPtr(ctx, other.m_Parent);
+
     Release();
+
+    m_Context = ctx;
+    m_UnderlyingValue = value;
+    m_Parent = parent;
   }
   return *this;
 }

@@ -1,4 +1,5 @@
 #pragma once
+#include "TypeScriptStructs.hpp"
 #include "internals.h"
 #include "vqjs-modules.h"
 
@@ -6,6 +7,7 @@
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <vector>
 
 // QuickJS classes
@@ -30,6 +32,7 @@ struct RuntimeInitFailedException final : std::exception {
 struct ValueUtils;
 struct Runtime;
 struct Instance;
+struct Promise;
 
 struct Context {
   Context();
@@ -82,6 +85,7 @@ struct Value {
   [[nodiscard]] bool AsBool() const;
   [[nodiscard]] int64_t AsInt() const;
   [[nodiscard]] std::vector<Value> AsArray() const;
+  [[nodiscard]] Promise AsPromise();
   [[nodiscard]] Value Exception() const;
   [[nodiscard]] std::string ExceptionStack() const;
   [[nodiscard]] Value Get(const std::string &key) const;
@@ -101,6 +105,9 @@ struct Value {
   [[nodiscard]] bool IsException() const;
   [[nodiscard]] bool IsArray() const;
   [[nodiscard]] bool IsFunction() const;
+  [[nodiscard]] bool IsUndefined() const;
+  [[nodiscard]] bool IsNull() const;
+  [[nodiscard]] bool IsPromise() const;
 
   Value operator[](const std::string &name) const;
   Value operator()(const std::vector<Value> &args) const;
@@ -148,12 +155,23 @@ struct Value {
 
 protected:
   explicit Value(const Context &, JS::Value, JS::Value);
-  void Release();
+  void Release() const;
   Context m_Context{};
   JS::Value m_UnderlyingValue{};
   JS::Value m_Parent{};
   friend ValueUtils;
   friend Runtime;
+  friend Promise;
+};
+
+struct Promise {
+  explicit Promise(Value );
+  Value Get();
+  // This is busy wait ;)
+  [[nodiscard]] Value Await() const;
+  [[nodiscard]] Value Result() const;
+protected:
+  Value m_Value{};
 };
 
 template <typename T> struct Array : RawArray<T> {
@@ -178,11 +196,12 @@ struct Instance {
   [[nodiscard]] Value Int32(int32_t data) const;
   [[nodiscard]] Value Int64(int64_t data) const;
   [[nodiscard]] Value Undefined() const;
+  [[nodiscard]] Value GetException() const;
 
   void SetBaseDirectory(const std::string &directory);
 
   // 0 == no limit
-  void SetStackSize(int64_t size = 0);
+  void SetStackSize(int64_t size = 0) const;
   explicit Instance(std::string name);
   ~Instance();
   Instance(Instance &) = delete;
@@ -193,7 +212,6 @@ struct Instance {
 protected:
   [[nodiscard]] Value LoadFile(const std::string &file, ModuleType type,
                                bool eval = true) const;
-
   void Reset();
   std::string m_BaseDirectory{"./"};
   std::string m_Name{"Unknown"};
@@ -207,10 +225,14 @@ protected:
 };
 
 struct Runtime {
-  struct Config {
-    std::string CoreDirectory = ".vqjs/";
-    bool UseTypescript = true;
-    std::vector<std::string> CompilerAddons;
+  struct CacheAndReal {
+    std::string Real{};
+    std::string Cache{};
+  };
+
+  struct Execution {
+    bool erroredOrDone{false};
+    int nextExecution{0};
   };
 
   struct ModuleLoader {
@@ -218,7 +240,7 @@ struct Runtime {
       std::string Base{};
       std::string Extra{};
     };
-    Resolved ResolvePath(const std::string &file) const;
+    [[nodiscard]] Resolved ResolvePath(const std::string &file) const;
     std::unordered_map<std::string, std::string> Paths;
     ModuleLoader &Add(const std::string &, const std::string &);
   };
@@ -227,23 +249,24 @@ struct Runtime {
   Runtime(const Runtime &) = delete;
   Runtime(Runtime &&) = delete;
   bool Start();
+  [[nodiscard]] bool Loop() const;
+  [[nodiscard]] Execution LoopOnce() const;
   bool Reset();
   [[nodiscard]] Value LoadFile(const std::string &file, bool eval = true) const;
   [[nodiscard]] std::string TranspileFile(const std::string &file) const;
+  [[nodiscard]] std::optional<TS::ReflectionData>
+  Metadata(const std::string &file) const;
+  [[nodiscard]] CacheAndReal GetCacheAndRealPath(const std::string &file) const;
   void WriteTSConfig() const;
 
   Instance &GetInstance();
-  Instance &GetCompilerInstance();
 
   void SetIncludeDirectory(const std::string &directory);
-  void SetLogger(Ref<Logger> &logger);
-  Logger &GetLogger();
-  Config &GetConfig();
+  void SetLogger(const Ref<Logger> &logger);
+  [[nodiscard]] Logger &GetLogger() const;
   ModuleLoader &GetLoader();
 
 protected:
-  Config m_Config{};
-  Instance m_CompilationInstance{"Compiler"};
   Instance m_AppInstance{"App"};
   ModuleLoader m_ModuleLoader{};
   Ref<Logger> m_Logger{};

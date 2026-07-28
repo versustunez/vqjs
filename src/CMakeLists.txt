@@ -1,8 +1,10 @@
 add_sources(
         vqjs.cpp
         vqjs-modules.cpp
+        TypeScript.cpp
         ValueImpl.cpp
         InstanceImpl.cpp
+        PromiseImpl.cpp
         RuntimeImpl.cpp
         File.cpp
 )
