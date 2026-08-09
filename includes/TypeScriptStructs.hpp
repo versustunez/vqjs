@@ -3,6 +3,8 @@
 #include <cstdint>
 #include <string>
 #include <vector>
+#include <variant>
+#include <optional>
 
 extern "C" {
 typedef void (*VQJSLogFn)(void *user_data, const char *);
@@ -16,9 +18,11 @@ namespace VQJS::TS {
 struct Type {
   std::string name;
   uint16_t flags = 0;
+  std::optional<std::variant<double, bool, std::string>> value;
+  std::vector<Type> arguments;
 
-  bool isArray() const;
-  bool isMap() const;
+  [[nodiscard]] bool isArray() const;
+  [[nodiscard]] bool isMap() const;
 };
 
 struct Member {

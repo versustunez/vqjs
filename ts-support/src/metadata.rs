@@ -1,8 +1,8 @@
 use crate::error::RuntimeError;
-use crate::parse_struct::{Classes, Member, ParseData, Type};
+use crate::parse_struct::{Classes, Member, ParseData, Type, TypeValue};
 use crate::serialize::BinaryWriter;
 use oxc_allocator::Allocator;
-use oxc_ast::ast::{Class, ClassElement, SourceType, TSType};
+use oxc_ast::ast::{Class, ClassElement, SourceType, TSLiteral, TSType};
 use oxc_ast_visit::Visit;
 use oxc_parser::{ParseOptions, Parser};
 use std::fs;
@@ -99,7 +99,23 @@ impl MetaVisitor {
             ),
             TSType::TSInferType(_) => Type::from("infer"),
             TSType::TSIntersectionType(_) => Type::from("intersection"),
-            TSType::TSLiteralType(_) => Type::from("literal"),
+            TSType::TSLiteralType(literal) => {
+                match &literal.as_ref().literal {
+                    TSLiteral::BooleanLiteral(a) => {
+                        Type::from("boolean").with_value(TypeValue::BooleanLiteral(a.value))
+                    }
+                    TSLiteral::NumericLiteral(a) => {
+                        Type::from("number").with_value(TypeValue::NumberLiteral(a.value))
+                    }
+                    TSLiteral::BigIntLiteral(a) => Type::from("bigint")
+                        .with_value(TypeValue::StringLiteral(a.value.to_string())),
+                    TSLiteral::StringLiteral(a) => Type::from("string")
+                        .with_value(TypeValue::StringLiteral(a.value.to_string())),
+                    TSLiteral::TemplateLiteral(_) | TSLiteral::UnaryExpression(_) => {
+                        Type::from("unknown-literal")
+                    }
+                }
+            }
             TSType::TSMappedType(_) => Type::from("mapped"),
             TSType::TSNamedTupleMember(_) => Type::from("named-tuple"),
             TSType::TSTemplateLiteralType(_) => Type::from("template-literal"),
@@ -109,7 +125,17 @@ impl MetaVisitor {
             TSType::TSTypeOperatorType(_) => Type::from("operator"),
             TSType::TSTypePredicate(_) => Type::from("predicate"),
             TSType::TSTypeQuery(_) => Type::from("query"),
-            TSType::TSTypeReference(_) => Type::from("reference"),
+            TSType::TSTypeReference(reference) => {
+                let mut t = Type::from(reference.type_name.to_string().as_str());
+                if reference.type_arguments.is_some() {
+                    let x = reference.type_arguments.as_ref().unwrap();
+                    t.arguments.reserve(x.params.len());
+                    x.params.iter().for_each(|parm| {
+                        t.arguments.push(Self::get_ts_type_to_vqjs_type(parm));
+                    })
+                }
+                return t;
+            }
             TSType::TSUnionType(element) => Type::from(
                 element
                     .types
@@ -174,7 +200,7 @@ fn parse_metadata(
 }
 
 static MAGIC: u32 = 0x53545156;
-static VERSION: u32 = 0x1;
+static VERSION: u32 = 0x2;
 
 pub(crate) fn vqjs_serialize_parse_data(data: &ParseData) -> Vec<u8> {
     let mut writer = BinaryWriter::new();
@@ -187,18 +213,43 @@ pub(crate) fn vqjs_serialize_parse_data(data: &ParseData) -> Vec<u8> {
         writer.write_u64(class.members.len() as u64);
         class.members.iter().for_each(|member| {
             writer.write_string(&member.name);
-            writer.write_string(&member.typ.name);
-            let mut flag: u16 = 0;
-            if member.typ.array {
-                flag |= 1 << 0;
-            }
-            if member.typ.map {
-                flag |= 1 << 1;
-            }
-            writer.write_u16(flag)
+            write_type(&mut writer, &member.typ);
         })
     });
     writer.into_vec()
+}
+
+fn write_type(mut writer: &mut BinaryWriter, member: &Type) {
+    writer.write_string(&member.name);
+    let mut flag: u16 = 0;
+    if member.array {
+        flag |= 1 << 0;
+    }
+    if member.map {
+        flag |= 1 << 1;
+    }
+    writer.write_u16(flag);
+    writer.write_u16(member.value.is_some() as u16);
+    if member.value.is_some() {
+        match member.value.as_ref().unwrap() {
+            TypeValue::BooleanLiteral(b) => {
+                writer.write_u16(0x1);
+                writer.write_u16(if *b { 1 } else { 0 })
+            }
+            TypeValue::NumberLiteral(b) => {
+                writer.write_u16(0x2);
+                writer.write_f64(*b)
+            }
+            TypeValue::StringLiteral(e) => {
+                writer.write_u16(0x3);
+                writer.write_string(e.as_str())
+            }
+        }
+    }
+    writer.write_u64(member.arguments.len() as u64);
+    member.arguments.iter().for_each(|arg| {
+        write_type(&mut writer, arg);
+    })
 }
 
 #[cfg(test)]

@@ -15,13 +15,13 @@ namespace VQJS {
   Value { m_Context, Utils::FromJSValue(obj) }
 
 // SharedBuffers are always uint8_t ptr, so we can easily delete them :)
-static void* DeallocateSharedBuffer(JSRuntime *, void *,
-                                           void *ptr, size_t size) {
+static void *
+DeallocateSharedBuffer(JSRuntime *, void *, void *ptr, size_t size) {
   if (size == 0) {
     delete[] static_cast<uint8_t *>(ptr);
-  } else {
-    // Not supported
+    return nullptr;
   }
+  // Not supported
   return ptr;
 }
 
@@ -36,14 +36,14 @@ Value Value::NewArray() const { return VNEW(JS_NewArray(m_Context)); }
 Value Value::SharedArrayBuffer(const size_t bytes) const {
   // we always creating shared Buffers here...
   auto *buffer = new uint8_t[bytes / sizeof(uint8_t)];
-  const JSValue val = JS_NewArrayBuffer(m_Context, buffer, bytes, 0,
-                                        &DeallocateSharedBuffer, nullptr, true);
+  const JSValue val = JS_NewArrayBuffer(
+      m_Context, buffer, bytes, 0, &DeallocateSharedBuffer, nullptr, false);
   return VNEW(val);
 }
 
 Value Value::SharedArrayBuffer(uint8_t *buf, const size_t bytes) const {
   const JSValue val = JS_NewArrayBuffer(m_Context, buf, bytes * sizeof(uint8_t),
-                                        0, nullptr, nullptr, true);
+                                        0, nullptr, nullptr, false);
   return VNEW(val);
 }
 
@@ -91,9 +91,7 @@ std::vector<Value> Value::AsArray() const {
   return data;
 }
 
-Promise Value::AsPromise() {
-  return Promise(*this);
-}
+Promise Value::AsPromise() { return Promise(*this); }
 
 Value Value::Exception() const {
   return Value(m_Context, FROM(JS_GetException(m_Context)));
@@ -134,6 +132,18 @@ Value Value::CallBind(const Value &bind, const std::vector<Value> &args) const {
       JS_Call(m_Context, TO(m_UnderlyingValue), TO(bind.m_UnderlyingValue),
               static_cast<int>(args.size()), jsValues.data());
   return Value(m_Context, FROM(ret));
+}
+
+Value Value::Instaniate(const std::vector<Value> &args) const {
+  std::vector<JSValue> callArgs{};
+  callArgs.reserve(args.size());
+  for (auto &arg : args) {
+    callArgs.push_back(TO(arg.m_UnderlyingValue));
+  }
+
+  JSValue instance = JS_CallConstructor(m_Context, TO(m_UnderlyingValue),
+                                        args.size(), callArgs.data());
+  return Value{m_Context, FROM(instance)};
 }
 
 void Value::Set(const std::string &key, const Value &obj) const {
@@ -232,14 +242,12 @@ struct ValueUtils {
     const char *str = JS_ToCString(ctx, functionData[0]);
     if (str == nullptr)
       return JS_UNDEFINED;
-    const auto fncPtr = instancePtr->m_Functions[str];
-
+    const auto fncPtr = instancePtr->m_Functions.find(str);
     JS_FreeCString(ctx, str);
-
-    if (fncPtr != nullptr) {
-      const Value val =
-          fncPtr->Function(Value::FromCtx(fncPtr->Ctx, &this_val),
-                           ConvertToValueCall(fncPtr->Ctx, argv, argc));
+    if (fncPtr != instancePtr->m_Functions.end()) {
+      const Value val = fncPtr->second->Function(
+          Value::FromCtx(fncPtr->second->Ctx, &this_val),
+          ConvertToValueCall(fncPtr->second->Ctx, argv, argc));
       return JS_DupValue(ctx, TO(val.m_UnderlyingValue));
     }
     return JS_UNDEFINED;
@@ -320,6 +328,9 @@ typedef struct JSRefCountHeader {
 } JSRefCountHeader;
 
 static JS::Value IncPtr(const Context &context, const JS::Value &val) {
+  if (JS_IsModule(TO(val))) {
+    return val;
+  }
   return FROM(JS_DupValue(context, TO(val)));
 }
 static int DecPtr(JS::Value &val) {
@@ -355,24 +366,29 @@ Value::Value(const Value &val)
       m_Parent(IncPtr(m_Context, val.m_Parent)) {}
 
 Value::Value(Value &&val) noexcept
-    : m_Context(val.m_Context),
+    : m_Context(std::move(val.m_Context)),
       m_UnderlyingValue(val.m_UnderlyingValue),
       m_Parent(val.m_Parent) {
   val.m_UnderlyingValue = {};
   val.m_Parent = {};
-  const Context ctx{};
-  val.m_Context = ctx;
+  val.m_Context = {};
 }
 
 void *Value::GetUnderlyingPtr() const { return m_UnderlyingValue.u.ptr; }
 void Value::Live() const { IncPtr(m_Context, m_UnderlyingValue); }
+void Value::Unlive() const { JS_FreeValue(m_Context, TO(m_UnderlyingValue)); }
 
 void Value::Release() const {
   if (!m_Context) {
     return;
   }
-  JS_FreeValue(m_Context, TO(m_UnderlyingValue));
-  JS_FreeValue(m_Context, TO(m_Parent));
+  if (!JS_IsModule(TO(m_UnderlyingValue))) {
+    JS_FreeValue(m_Context, TO(m_UnderlyingValue));
+  }
+
+  if (!JS_IsModule(TO(m_Parent))) {
+    JS_FreeValue(m_Context, TO(m_Parent));
+  }
 }
 
 Value &Value::operator=(const Value &other) noexcept {

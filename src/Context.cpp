@@ -24,7 +24,7 @@ static void *Realloc(void *opaque, void *ptr, size_t size) {
 }
 
 static JSRuntime *CreateRuntime() {
-  static const JSMallocFunctions jsMallocFunctions = {
+  static constexpr JSMallocFunctions jsMallocFunctions = {
       Calloc, Malloc, Free, Realloc, mi_usable_size};
   return JS_NewRuntime2(&jsMallocFunctions, nullptr);
 }
@@ -38,49 +38,18 @@ static JSContext *CreateContext(JSRuntime *rt) {
   return ctx;
 }
 
-Context::Context(Instance *instance)
-    : Rt(CreateRuntime()),
-      Ctx(CreateContext(Rt)),
-      Count(new int(1)) {
-  JS_SetContextOpaque(Ctx, instance);
+Context::Context(Instance *instance): m_State(std::make_shared<State>()) {
+  JS_SetContextOpaque(*this, instance);
+}
+
+Context::State::State() : Rt(CreateRuntime()), Ctx(CreateContext(Rt)){
   js_std_init_handlers(Rt);
 }
-Context::Context(const Context &o) : Rt(o.Rt), Ctx(o.Ctx), Count(o.Count) {
-  ++(*Count);
+Context::State::~State() {
+  js_std_free_handlers(Rt);
+  JS_FreeContext(Ctx);
+  JS_FreeRuntime(Rt);
 }
 
-Context &Context::operator=(const Context &other) noexcept {
-  if (&other == this) {
-    return *this;
-  }
-  // If we already have an instance...
-  // we have to release us first...
-  // Otherwise we would leak :)
-  if (Count) {
-    Release();
-  }
-  ++(*other.Count);
-  Count = other.Count;
-  Ctx = other.Ctx;
-  Rt = other.Rt;
-  return *this;
-}
-
-void Context::Release() const {
-  --(*Count);
-  if (*Count <= 0) {
-    delete Count;
-    // raise(SIGTRAP);
-    js_std_free_handlers(Rt);
-    JS_FreeContext(Ctx);
-    JS_FreeRuntime(Rt);
-  }
-}
-Context::~Context() { Release(); }
-// To avoid Deallocating the last instance for a Free Empty Context Constructor
-// :)
-static int StaticCount = 1;
-Context::Context() : Rt(nullptr), Ctx(nullptr), Count(&StaticCount) {
-  ++StaticCount;
-}
+Context::Context() = default;
 } // namespace VQJS

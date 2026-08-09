@@ -132,23 +132,37 @@ static std::string join(const std::vector<std::string> &data,
   return oss.str();
 }
 
-static void HandleRejectedPromisese(JSContext *ctx, JSValueConst,
-                                           JSValueConst reason,
-                                           bool is_handled, void *opaque) {
-  if (is_handled) { return; }
-  const auto* instance = static_cast<Runtime*>(opaque);
+static void HandleRejectedPromisese(JSContext *ctx,
+                                    JSValueConst,
+                                    JSValueConst reason,
+                                    bool is_handled,
+                                    void *opaque) {
+  if (is_handled) {
+    return;
+  }
+  const auto *instance = static_cast<Runtime *>(opaque);
   const char *str = JS_ToCString(ctx, reason);
   if (str == nullptr) {
     return;
   }
-  instance->GetLogger().Error(str);
+  instance->GetLogger().Error(std::format("Unhandled Error: {}", str));
   JS_FreeCString(ctx, str);
+  if (auto val = JS_GetPropertyStr(ctx, reason, "stack");
+      val.tag != JS_TAG_UNDEFINED) {
+    str = JS_ToCString(ctx, val);
+    if (str != nullptr) {
+      instance->GetLogger().Error(str);
+      JS_FreeCString(ctx, str);
+    }
+    JS_FreeValue(ctx, val);
+  }
 }
 
 bool Runtime::Reset() {
   m_AppInstance.Reset();
   JS_SetRuntimeOpaque(m_AppInstance.m_Context, this);
-  JS_SetHostPromiseRejectionTracker(m_AppInstance.m_Context, HandleRejectedPromisese, this);
+  JS_SetHostPromiseRejectionTracker(m_AppInstance.m_Context,
+                                    HandleRejectedPromisese, this);
   PrepareStd(m_AppInstance.m_Context, false);
   JS_SetModuleLoaderFunc(m_AppInstance.m_Context, nullptr, &Loader::LoadModule,
                          this);
@@ -168,8 +182,16 @@ void Runtime::SetIncludeDirectory(const std::string &includeDir) {
   m_AppInstance.SetBaseDirectory(includeDir);
 }
 
-Value Runtime::LoadFile(const std::string &file, bool eval) const {
+Value Runtime::LoadFile(const std::string &file, bool eval) {
   return m_AppInstance.LoadFile(file, ModuleType::Module, eval);
+}
+
+Value Runtime::LoadFileAndStoreModule(const std::string &file) {
+  return m_AppInstance.LoadFileAndStoreModule(file);
+}
+
+Value Runtime::Eval(const std::string &content) {
+  return m_AppInstance.Eval(content);
 }
 
 static std::string
@@ -247,9 +269,10 @@ void Runtime::WriteTSConfig() const {
     "strict": true,
     "allowJs": false,
     "alwaysStrict": true,
+    "lib": ["ES2023"],
     "paths": {{{}}}
   }},
-  "includes": [{}]
+  "include": [{}]
 }})",
                                               join(paths), join(includes));
   File::Write(m_AppInstance.m_BaseDirectory + "tsconfig.json", fileContent);

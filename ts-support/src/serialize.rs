@@ -23,6 +23,10 @@ impl BinaryWriter {
         self.data.extend_from_slice(&value.to_le_bytes());
     }
 
+    pub fn write_f64(&mut self, value: f64) {
+        self.data.extend_from_slice(&value.to_le_bytes());
+    }
+
     pub fn write_string(&mut self, value: &str) {
         self.write_u32(value.len() as u32);
         self.data.extend_from_slice(value.as_bytes());

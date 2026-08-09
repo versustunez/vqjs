@@ -25,10 +25,6 @@ else ()
     SET(TS_LIB "libts_support.a")
 endif ()
 
-# ASAN CHECK!
-#set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fsanitize=address,undefined,alignment,leak,null,return -fsanitize-address-use-after-scope")
-#set (CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fsanitize=address,undefined,alignment,leak,null,return -fsanitize-address-use-after-scope")
-
 find_program(CARGO cargo REQUIRED)
 
 add_library(sse4_1 INTERFACE IMPORTED)
@@ -47,11 +43,12 @@ add_definitions(-DMI_MALLOC_OVERRIDE=1)
 # ADD Directories
 add_subdirectory(CMake)
 add_subdirectory(src)
+add_subdirectory(test)
 add_subdirectory(CMake/Rust)
 
 
 get_property(source_files GLOBAL PROPERTY SRCS)
-add_library(${PROJECT_NAME} SHARED ${source_files} vendor/mimalloc/src/static.c src/Context.cpp)
+add_library(${PROJECT_NAME} SHARED ${source_files} vendor/mimalloc/src/static.c)
 set_property(TARGET ${PROJECT_NAME} PROPERTY CXX_STANDARD 20)
 set_target_properties(${PROJECT_NAME} PROPERTIES
         ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/bin/
@@ -83,11 +80,32 @@ else ()
 endif ()
 
 
-if (!MSVC)
+if (NOT MSVC)
     add_custom_target(
             copy-compile-commands ALL
             ${CMAKE_COMMAND} -E copy_if_different
             ${CMAKE_BINARY_DIR}/compile_commands.json
-            ${CMAKE_CURRENT_LIST_DIR}
+            ${CMAKE_CURRENT_SOURCE_DIR}
     )
+endif ()
+
+# Let us use catch2 for some unit tests..
+get_property(test_files GLOBAL PROPERTY TEST_SRCS)
+option(ENABLE_TEST "Use Catch2" OFF)
+if (ENABLE_TEST)
+    Include(FetchContent)
+    FetchContent_Declare(
+            Catch2
+            GIT_REPOSITORY https://github.com/catchorg/Catch2.git
+            GIT_TAG v3.8.1
+    )
+    FetchContent_MakeAvailable(Catch2)
+
+    list(APPEND CMAKE_MODULE_PATH ${catch2_SOURCE_DIR}/extras)
+    include(CTest)
+    include(Catch)
+    add_executable(tests ${test_files})
+    target_include_directories(tests PUBLIC ${CMAKE_BINARY_DIR})
+    target_link_libraries(tests PRIVATE Catch2::Catch2WithMain ${PROJECT_NAME})
+    catch_discover_tests(tests)
 endif ()

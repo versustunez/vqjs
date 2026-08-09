@@ -4,7 +4,6 @@
 #include "quickjs/quickjs.h"
 #include "vqjs.h"
 
-#include <iostream>
 #include <utility>
 
 #define FROM(obj) Utils::FromJSValue(obj)
@@ -33,7 +32,6 @@ Value Promise::Result() const {
       m_Value.m_Context,
       FROM(JS_PromiseResult(m_Value.m_Context, TO(m_Value.m_UnderlyingValue)))};
 }
-
 } // namespace VQJS
 
 #undef FROM
