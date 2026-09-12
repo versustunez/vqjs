@@ -1,0 +1,28 @@
+[package]
+name = "ts-support"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+crate-type = ["staticlib"]
+
+[profile.release]
+panic = "abort"
+strip = "debuginfo"
+lto = "thin"
+opt-level = 3
+debug = false
+debug-assertions = false
+
+[profile.dev]
+panic = "abort"
+lto="thin"
+
+[dependencies]
+oxc_ast = "0.143.0"
+oxc_ast_visit = "0.143.0"
+oxc_parser = "0.143.0"
+oxc_allocator = "0.143.0"
+deno_lint = "0.84.1"
+deno_ast = { version = "0.53.3", features = ["transpiling"] }
+url = "2.5.8"

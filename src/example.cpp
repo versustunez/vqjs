@@ -9,7 +9,6 @@ auto main(const int argc, char *argv[]) -> int {
   runtime.GetLoader().Add("@core", "./app-core/").Add("@", "./app/");
   VQJS::Instance &instance = runtime.GetInstance();
   runtime.Start();
-  runtime.WriteTSConfig();
   instance.Global().AddFunction(
       "handleMetadata",
       [](const VQJS::Value &val, const std::vector<VQJS::Value> &) {

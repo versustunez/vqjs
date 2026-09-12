@@ -1,4 +1,6 @@
 #pragma once
+
+#include "TypeScriptStructs.hpp"
 #include "internals.h"
 #include "vqjs-modules.h"
 
@@ -6,6 +8,8 @@
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <optional>
+#include <unordered_map>
 #include <vector>
 
 // QuickJS classes
@@ -30,26 +34,25 @@ struct RuntimeInitFailedException final : std::exception {
 struct ValueUtils;
 struct Runtime;
 struct Instance;
+struct Promise;
+struct Class;
 
 struct Context {
   Context();
   explicit Context(Instance *);
-  ~Context();
-  Context(const Context &);
-  Context(Context &&) = delete;
-  operator JSContext *() const { return Ctx; }
-  operator JSRuntime *() const { return Rt; }
-  Context &operator=(const Context &other) noexcept;
-  Context &operator=(Context &&other) noexcept = delete;
-  static void PrintStats();
+  operator JSContext *() const { return m_State ? m_State->Ctx : nullptr; }
+  operator JSRuntime *() const { return m_State ? m_State->Rt : nullptr; }
 
-  operator bool() const { return Ctx != nullptr && Rt != nullptr; }
+  operator bool() const { return m_State != nullptr; }
 
 private:
-  JSRuntime *Rt;
-  JSContext *Ctx;
-  int *Count;
-  void Release() const;
+  struct State {
+    JSRuntime *Rt{nullptr};
+    JSContext *Ctx{nullptr};
+    State();
+    ~State();
+  };
+  std::shared_ptr<State> m_State{nullptr};
 };
 
 template <typename T> struct RawArray {
@@ -82,12 +85,14 @@ struct Value {
   [[nodiscard]] bool AsBool() const;
   [[nodiscard]] int64_t AsInt() const;
   [[nodiscard]] std::vector<Value> AsArray() const;
+  [[nodiscard]] Promise AsPromise();
   [[nodiscard]] Value Exception() const;
   [[nodiscard]] std::string ExceptionStack() const;
   [[nodiscard]] Value Get(const std::string &key) const;
   [[nodiscard]] Value Call(const std::vector<Value> &args) const;
   [[nodiscard]] Value CallBind(const Value &bind,
                                const std::vector<Value> &args) const;
+  [[nodiscard]] Value Instaniate(const std::vector<Value> &args = {}) const;
   void Set(const std::string &key, const Value &obj) const;
   [[nodiscard]] std::vector<std::string> ObjectKeys() const;
 
@@ -101,6 +106,9 @@ struct Value {
   [[nodiscard]] bool IsException() const;
   [[nodiscard]] bool IsArray() const;
   [[nodiscard]] bool IsFunction() const;
+  [[nodiscard]] bool IsUndefined() const;
+  [[nodiscard]] bool IsNull() const;
+  [[nodiscard]] bool IsPromise() const;
 
   Value operator[](const std::string &name) const;
   Value operator()(const std::vector<Value> &args) const;
@@ -123,6 +131,7 @@ struct Value {
   // Will Dup the value so its leaking
   // Example: For Function calls that return values to JS :)
   void Live() const;
+  void Unlive() const;
 
   [[nodiscard]] Value ThrowException(const std::string &message) const;
   [[nodiscard]] Value String(const std::string &data) const;
@@ -148,12 +157,47 @@ struct Value {
 
 protected:
   explicit Value(const Context &, JS::Value, JS::Value);
-  void Release();
+  void Release() const;
   Context m_Context{};
   JS::Value m_UnderlyingValue{};
   JS::Value m_Parent{};
   friend ValueUtils;
   friend Runtime;
+  friend Promise;
+  friend Class;
+  friend Instance;
+};
+
+struct Promise {
+  explicit Promise(Value);
+  Value Get();
+  // This is busy wait ;)
+  [[nodiscard]] Value Await() const;
+  [[nodiscard]] Value Result() const;
+
+protected:
+  Value m_Value{};
+};
+
+// @TODO: This is a bit simplified currently. you can't really add properties
+// and more... yes sadly
+struct Class {
+  Class(std::string name, bool noConstruct, const Context &context);
+  Value GetProto();
+  void Finalize();
+  Value New();
+  std::uint32_t GetID();
+
+  void *GetOpaque(Value instance);
+  void SetOpaque(Value instance, void *ptr);
+
+private:
+  std::string m_Name{};
+  bool m_IsFinalized{};
+  Value m_Proto{};
+  Context m_Context{};
+  bool m_NoConstruct{false};
+  std::uint32_t m_ClassId{0};
 };
 
 template <typename T> struct Array : RawArray<T> {
@@ -178,11 +222,17 @@ struct Instance {
   [[nodiscard]] Value Int32(int32_t data) const;
   [[nodiscard]] Value Int64(int64_t data) const;
   [[nodiscard]] Value Undefined() const;
+  [[nodiscard]] Value GetException() const;
+  [[nodiscard]] Ref<Class> CreateClass(const std::string &name,
+                                       bool noConstruct = false);
+  [[nodiscard]] Value GetModuleProperty(const std::string &module,
+                                        const std::string &name);
 
   void SetBaseDirectory(const std::string &directory);
+  std::string &GetBaseDirectory();
 
   // 0 == no limit
-  void SetStackSize(int64_t size = 0);
+  void SetStackSize(int64_t size = 0) const;
   explicit Instance(std::string name);
   ~Instance();
   Instance(Instance &) = delete;
@@ -191,15 +241,18 @@ struct Instance {
   std::string &GetName() { return m_Name; }
 
 protected:
-  [[nodiscard]] Value LoadFile(const std::string &file, ModuleType type,
-                               bool eval = true) const;
-
+  [[nodiscard]] Value
+  LoadFile(const std::string &file, ModuleType type, bool eval = true);
+  [[nodiscard]] Value LoadFileAndStoreModule(const std::string &file);
+  [[nodiscard]] Value Eval(const std::string &content);
   void Reset();
   std::string m_BaseDirectory{"./"};
   std::string m_Name{"Unknown"};
   Context m_Context;
 
   std::unordered_map<std::string, Ref<Value::FunctionData>> m_Functions{};
+  std::unordered_map<std::string, Value> m_Modules;
+  std::unordered_map<std::string, Ref<Class>> m_DefinedClass;
 
   friend Value;
   friend Runtime;
@@ -207,10 +260,14 @@ protected:
 };
 
 struct Runtime {
-  struct Config {
-    std::string CoreDirectory = ".vqjs/";
-    bool UseTypescript = true;
-    std::vector<std::string> CompilerAddons;
+  struct CacheAndReal {
+    std::string Real{};
+    std::string Cache{};
+  };
+
+  struct Execution {
+    bool erroredOrDone{false};
+    int nextExecution{0};
   };
 
   struct ModuleLoader {
@@ -218,7 +275,7 @@ struct Runtime {
       std::string Base{};
       std::string Extra{};
     };
-    Resolved ResolvePath(const std::string &file) const;
+    [[nodiscard]] Resolved ResolvePath(const std::string &file) const;
     std::unordered_map<std::string, std::string> Paths;
     ModuleLoader &Add(const std::string &, const std::string &);
   };
@@ -227,23 +284,26 @@ struct Runtime {
   Runtime(const Runtime &) = delete;
   Runtime(Runtime &&) = delete;
   bool Start();
+  [[nodiscard]] bool Loop() const;
+  [[nodiscard]] Execution LoopOnce() const;
   bool Reset();
-  [[nodiscard]] Value LoadFile(const std::string &file, bool eval = true) const;
+  [[nodiscard]] Value LoadFile(const std::string &file, bool eval = true);
+  [[nodiscard]] Value LoadFileAndStoreModule(const std::string &file);
+  [[nodiscard]] Value Eval(const std::string &content);
   [[nodiscard]] std::string TranspileFile(const std::string &file) const;
+  [[nodiscard]] std::optional<TS::ReflectionData>
+  Metadata(const std::string &file) const;
+  [[nodiscard]] CacheAndReal GetCacheAndRealPath(const std::string &file) const;
   void WriteTSConfig() const;
 
   Instance &GetInstance();
-  Instance &GetCompilerInstance();
 
   void SetIncludeDirectory(const std::string &directory);
-  void SetLogger(Ref<Logger> &logger);
-  Logger &GetLogger();
-  Config &GetConfig();
+  void SetLogger(const Ref<Logger> &logger);
+  [[nodiscard]] Logger &GetLogger() const;
   ModuleLoader &GetLoader();
 
 protected:
-  Config m_Config{};
-  Instance m_CompilationInstance{"Compiler"};
   Instance m_AppInstance{"App"};
   ModuleLoader m_ModuleLoader{};
   Ref<Logger> m_Logger{};
