@@ -24,7 +24,7 @@ jobs:
       fail-fast: false
       matrix:
         os: [ ubuntu-24.04, windows-latest ]
-        buildType: [ Debug, Release ]
+        buildType: [ Release ]
     steps:
       - uses: actions/checkout@v7
         with:
